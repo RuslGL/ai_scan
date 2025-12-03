@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Set
 
 import asyncpg
 from asyncpg import Connection, Pool
@@ -21,6 +21,9 @@ DB_PORT: str = os.getenv("POSTGRES_PORT", "5432")
 
 # глобальный пул подключений
 _pool: Optional[Pool] = None
+
+# кэш активных сайтов: сюда будем грузить id, у которых is_active = TRUE
+active_sites_cache: Set[str] = set()
 
 
 async def get_pool() -> Pool:
@@ -61,3 +64,19 @@ async def get_connection() -> AsyncGenerator[Connection, None]:
         yield conn
     finally:
         await pool.release(conn)
+
+
+async def refresh_active_sites() -> None:
+    """
+    Обновляет кэш active_sites_cache:
+    загружает id всех сайтов, у которых is_active = TRUE.
+    """
+    global active_sites_cache
+    pool: Pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id FROM sites WHERE is_active = TRUE"
+        )
+
+    active_sites_cache = {row["id"] for row in rows}

@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 # Устанавливаем системные зависимости
 RUN apt-get update && apt-get install -y \
-    build-essential \
+    gcc \
+    libpq-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Рабочая директория
@@ -18,5 +19,5 @@ COPY . /app
 # Открываем порт API
 EXPOSE 8000
 
-# Команда по умолчанию (может быть переопределена в docker-compose)
+# Старт сервера (без миграций, миграции выполняются в docker-compose)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

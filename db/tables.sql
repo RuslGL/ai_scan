@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS sites (
     category TEXT,
     created_at TIMESTAMP,
     last_scan_at TIMESTAMP,
-    is_active BOOLEAN
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- SITE STRUCTURE
@@ -57,21 +57,29 @@ CREATE TABLE IF NOT EXISTS site_structure (
     last_seen TIMESTAMP
 );
 
--- EVENTS  (строго как у тебя в БД)
+-- EVENTS (новая структура под SDK-tracking)
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY,
-    site_id UUID,
-    tilda_id TEXT,
-    event_type TEXT,
+    site_id UUID REFERENCES sites(id),
+    uid TEXT,
     session_id UUID,
-    timestamp TIMESTAMP,
-    extra_data JSONB
+    event_type TEXT,
+    event_time TIMESTAMP,
+
+    -- CLICK
+    click_text TEXT,
+    click_block_title TEXT,
+
+    -- SCROLL
+    scroll_percent INT,
+    scroll_max INT,
+    scroll_milestone INT
 );
 
 -- SESSIONS
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY,
-    site_id UUID,
+    site_id UUID REFERENCES sites(id),
     url_start TEXT,
     user_agent TEXT,
     ip_hash TEXT,
