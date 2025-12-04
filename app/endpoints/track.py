@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import asyncpg
@@ -11,7 +11,6 @@ from app.db import get_connection, active_sites_cache
 router = APIRouter()
 
 
-# --- схема батча здесь не требуется, работаем вручную ---
 @router.post("/track")
 async def track_batch(
     payload: Dict[str, Any],
@@ -27,11 +26,10 @@ async def track_batch(
     session_id = payload.get("session_id")
     events: List[Dict[str, Any]] = payload.get("events", [])
 
-    # 1) Проверяем активность сайта
-    if site_id not in active_sites_cache:
-        return {"status": "ignored"}
+    # --- Проверка активности сайта отключена ---
+    # if site_id not in active_sites_cache:
+    #     return {"status": "ignored"}
 
-    # 2) Перебираем каждое событие
     for ev in events:
         event_type = ev.get("event_type")
         timestamp = ev.get("ts") or datetime.utcnow()
@@ -43,16 +41,22 @@ async def track_batch(
         scroll_max = None
         scroll_milestone = None
 
-        # CLICK
+        # CLICK event
         if event_type == "click":
             click_text = data.get("text")
             click_block_title = data.get("block_title")
 
-        # SCROLL_DEPTH
+        # SCROLL_DEPTH event
         elif event_type == "scroll_depth":
             scroll_percent = data.get("current_percent")
             scroll_max = data.get("max_percent")
             scroll_milestone = data.get("milestone")
+
+        # Корректное преобразование timestamp
+        if isinstance(timestamp, int):
+            event_time = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
+        else:
+            event_time = timestamp
 
         # INSERT
         await conn.execute(
@@ -75,9 +79,7 @@ async def track_batch(
             uid,
             session_id,
             event_type,
-            datetime.utcfromtimestamp(timestamp / 1000)
-                if isinstance(timestamp, int)
-                else timestamp,
+            event_time,
             click_text,
             click_block_title,
             scroll_percent,
