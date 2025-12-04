@@ -8,7 +8,8 @@
     const SESSION_KEY = "ai_scan_session";
     const OFFLINE_QUEUE_KEY = "ai_scan_offline_queue";
 
-    const siteId = location.hostname;
+    // Новый параметр: site_url вместо site_id
+    const siteUrl = location.hostname;
     const apiUrl = "https://ai-scan.tech/track";
 
     function generateId() {
@@ -96,6 +97,7 @@
         const body = document.body;
         const scrollTop =
             window.scrollY || doc.scrollTop || body.scrollTop || 0;
+
         const scrollHeight = Math.max(
             body.scrollHeight,
             doc.scrollHeight,
@@ -104,12 +106,12 @@
             body.clientHeight,
             doc.clientHeight
         );
+
         const viewportHeight =
-            window.innerHeight ||
-            doc.clientHeight ||
-            body.clientHeight ||
-            1;
+            window.innerHeight || doc.clientHeight || body.clientHeight || 1;
+
         const maxScrollable = Math.max(scrollHeight - viewportHeight, 1);
+
         const scrollPercent = Math.min(
             100,
             Math.max(0, Math.round((scrollTop / maxScrollable) * 100))
@@ -123,10 +125,8 @@
             language: navigator.language || null,
             viewport_width: window.innerWidth || null,
             viewport_height: window.innerHeight || null,
-            screen_width:
-                (window.screen && window.screen.width) || null,
-            screen_height:
-                (window.screen && window.screen.height) || null,
+            screen_width: (window.screen && window.screen.width) || null,
+            screen_height: (window.screen && window.screen.height) || null,
             scroll_y: scrollTop,
             scroll_percent: scrollPercent,
         };
@@ -135,8 +135,10 @@
     function calcScrollPercent() {
         const doc = document.documentElement;
         const body = document.body;
+
         const scrollTop =
             window.scrollY || doc.scrollTop || body.scrollTop || 0;
+
         const scrollHeight = Math.max(
             body.scrollHeight,
             doc.scrollHeight,
@@ -145,12 +147,12 @@
             body.clientHeight,
             doc.clientHeight
         );
+
         const viewportHeight =
-            window.innerHeight ||
-            doc.clientHeight ||
-            body.clientHeight ||
-            1;
+            window.innerHeight || doc.clientHeight || body.clientHeight || 1;
+
         const maxScrollable = Math.max(scrollHeight - viewportHeight, 1);
+
         return Math.min(
             100,
             Math.max(0, Math.round((scrollTop / maxScrollable) * 100))
@@ -195,21 +197,18 @@
         let payloadEvents = [];
 
         if (offlineQueue.length > 0) {
-            payloadEvents = payloadEvents.concat(
-                offlineQueue.splice(0, BATCH_SIZE)
-            );
+            payloadEvents = payloadEvents.concat(offlineQueue.splice(0, BATCH_SIZE));
         }
+
         if (queue.length > 0 && payloadEvents.length < BATCH_SIZE) {
             const need = BATCH_SIZE - payloadEvents.length;
-            payloadEvents = payloadEvents.concat(
-                queue.splice(0, need)
-            );
+            payloadEvents = payloadEvents.concat(queue.splice(0, need));
         }
 
         if (payloadEvents.length === 0) return;
 
         const body = JSON.stringify({
-            site_id: siteId,
+            site_url: siteUrl,  // <-- важное изменение
             uid: uid,
             session_id: sessionId,
             events: payloadEvents,
@@ -249,7 +248,7 @@
             event_id: generateId(),
             event_type,
             ts: Date.now(),
-            site_id: siteId,
+            site_url: siteUrl,  // <-- исправлено
             uid: uid,
             session_id: sessionId,
             meta: getPageMeta(),
@@ -288,15 +287,13 @@
         const tag = (el.tagName || "").toLowerCase();
         const id = el.id || null;
         const className = (el.className || "").toString();
-        const text = (el.innerText || el.textContent || "")
-            .trim()
-            .slice(0, 120);
+        const text = (el.innerText || el.textContent || "").trim().slice(0, 120);
 
         const selector = buildSelector(el);
         const blockTitle = findNearestTitle(el);
-        const sectionName = findSectionName(el);
+        theSection = findSectionName(el);
 
-        return { tag, id, className, text, selector, blockTitle, sectionName };
+        return { tag, id, className, text, selector, blockTitle, sectionName: theSection };
     }
 
     function buildSelector(el) {
@@ -341,9 +338,7 @@
                 node.querySelector &&
                 node.querySelector("h1,h2,h3,h4");
             if (h && (h.innerText || h.textContent)) {
-                return (h.innerText || h.textContent)
-                    .trim()
-                    .slice(0, 120);
+                return (h.innerText || h.textContent).trim().slice(0, 120);
             }
             node = node.parentElement;
         }

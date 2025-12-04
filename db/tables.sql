@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS user_plans (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- SITES (исправлено)
+-- SITES
 CREATE TABLE IF NOT EXISTS sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -57,20 +57,20 @@ CREATE TABLE IF NOT EXISTS site_structure (
     last_seen TIMESTAMP DEFAULT NOW()
 );
 
--- EVENTS (SDK)
+-- EVENTS (новый формат — site_url вместо site_id UUID)
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID REFERENCES sites(id),
+
+    site_url TEXT NOT NULL,        -- <--- заменили UUID site_id на TEXT URL
+
     uid TEXT,
     session_id UUID,
     event_type TEXT,
     event_time TIMESTAMP DEFAULT NOW(),
 
-    -- CLICK
     click_text TEXT,
     click_block_title TEXT,
 
-    -- SCROLL
     scroll_percent INT,
     scroll_max INT,
     scroll_milestone INT

@@ -18,16 +18,16 @@ async def track_batch(
 ):
     """
     Приём батча событий от SDK.
-    Каждое событие сохраняем как отдельную строку в таблице events.
+    SDK передает site_url, а не UUID site_id.
     """
 
-    site_id = payload.get("site_id")
+    site_url = payload.get("site_url")  # <-- важное изменение
     uid = payload.get("uid")
     session_id = payload.get("session_id")
     events: List[Dict[str, Any]] = payload.get("events", [])
 
-    # --- Проверка активности сайта отключена ---
-    # if site_id not in active_sites_cache:
+    # ----- Проверка отключена, оставить закомментированной -----
+    # if site_url not in active_sites_cache:
     #     return {"status": "ignored"}
 
     for ev in events:
@@ -41,12 +41,10 @@ async def track_batch(
         scroll_max = None
         scroll_milestone = None
 
-        # CLICK event
         if event_type == "click":
             click_text = data.get("text")
             click_block_title = data.get("block_title")
 
-        # SCROLL_DEPTH event
         elif event_type == "scroll_depth":
             scroll_percent = data.get("current_percent")
             scroll_max = data.get("max_percent")
@@ -58,11 +56,10 @@ async def track_batch(
         else:
             event_time = timestamp
 
-        # INSERT
         await conn.execute(
             """
             INSERT INTO events (
-                site_id,
+                site_url,
                 uid,
                 session_id,
                 event_type,
@@ -75,7 +72,7 @@ async def track_batch(
             )
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             """,
-            site_id,
+            site_url,
             uid,
             session_id,
             event_type,
