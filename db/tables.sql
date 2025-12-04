@@ -1,9 +1,9 @@
 -- USERS
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT,
     telegram_id TEXT,
-    joined_at TIMESTAMP,
+    joined_at TIMESTAMP DEFAULT NOW(),
     source TEXT,
     auth_method TEXT,
     category TEXT,
@@ -13,58 +13,58 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- PLANS
 CREATE TABLE IF NOT EXISTS plans (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT,
     price INT,
     sites_limit INT,
     events_limit INT,
-    created_at TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- USER PLANS
 CREATE TABLE IF NOT EXISTS user_plans (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
     plan_id UUID REFERENCES plans(id),
     valid_until TIMESTAMP,
-    is_active BOOLEAN,
-    created_at TIMESTAMP
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- SITES
+-- SITES (исправлено)
 CREATE TABLE IF NOT EXISTS sites (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
-    site_url TEXT,
+    site_url TEXT NOT NULL,
     api_key TEXT,
     category TEXT,
-    created_at TIMESTAMP,
-    last_scan_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_scan_at TIMESTAMP DEFAULT NOW(),
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- SITE STRUCTURE
 CREATE TABLE IF NOT EXISTS site_structure (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     site_id UUID REFERENCES sites(id),
     url TEXT,
     tilda_id TEXT,
     element_type TEXT,
     text_current TEXT,
     position_index INT,
-    is_active BOOLEAN,
-    first_seen TIMESTAMP,
-    last_seen TIMESTAMP
+    is_active BOOLEAN DEFAULT TRUE,
+    first_seen TIMESTAMP DEFAULT NOW(),
+    last_seen TIMESTAMP DEFAULT NOW()
 );
 
--- EVENTS (новая структура под SDK-tracking)
+-- EVENTS (SDK)
 CREATE TABLE IF NOT EXISTS events (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     site_id UUID REFERENCES sites(id),
     uid TEXT,
     session_id UUID,
     event_type TEXT,
-    event_time TIMESTAMP,
+    event_time TIMESTAMP DEFAULT NOW(),
 
     -- CLICK
     click_text TEXT,
@@ -78,11 +78,11 @@ CREATE TABLE IF NOT EXISTS events (
 
 -- SESSIONS
 CREATE TABLE IF NOT EXISTS sessions (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     site_id UUID REFERENCES sites(id),
     url_start TEXT,
     user_agent TEXT,
     ip_hash TEXT,
-    started_at TIMESTAMP,
+    started_at TIMESTAMP DEFAULT NOW(),
     ended_at TIMESTAMP
 );
