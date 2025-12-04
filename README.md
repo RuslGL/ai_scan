@@ -114,3 +114,8 @@ server {
 ln -s /etc/nginx/sites-available/ai-scan.tech /etc/nginx/sites-enabled/
 systemctl reload nginx
 
+
+https://cdn.ai-scan.tech/sdk.js
+
+
+
