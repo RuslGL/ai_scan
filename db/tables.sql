@@ -3,12 +3,12 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT,
     telegram_id TEXT,
-    joined_at TIMESTAMP DEFAULT NOW(),
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
     source TEXT,
     auth_method TEXT,
     category TEXT,
     dashboard_token TEXT,
-    dashboard_token_created_at TIMESTAMP
+    dashboard_token_created_at TIMESTAMPTZ
 );
 
 -- PLANS
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS plans (
     price INT,
     sites_limit INT,
     events_limit INT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- USER PLANS
@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS user_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
     plan_id UUID REFERENCES plans(id),
-    valid_until TIMESTAMP,
+    valid_until TIMESTAMPTZ,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- SITES
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS sites (
     site_url TEXT NOT NULL,
     api_key TEXT,
     category TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    last_scan_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_scan_at TIMESTAMPTZ DEFAULT NOW(),
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -53,20 +53,21 @@ CREATE TABLE IF NOT EXISTS site_structure (
     text_current TEXT,
     position_index INT,
     is_active BOOLEAN DEFAULT TRUE,
-    first_seen TIMESTAMP DEFAULT NOW(),
-    last_seen TIMESTAMP DEFAULT NOW()
+    first_seen TIMESTAMPTZ DEFAULT NOW(),
+    last_seen TIMESTAMPTZ DEFAULT NOW()
 );
 
--- EVENTS (новый формат — site_url вместо site_id UUID)
+-- EVENTS (SDK)
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    site_url TEXT NOT NULL,        -- <--- заменили UUID site_id на TEXT URL
+    site_url TEXT NOT NULL,             -- <- URL вместо UUID
 
     uid TEXT,
-    session_id UUID,
+    session_id TEXT,                    -- <- было UUID, теперь TEXT
     event_type TEXT,
-    event_time TIMESTAMP DEFAULT NOW(),
+
+    event_time TIMESTAMPTZ DEFAULT NOW(),  -- <- UTC-aware
 
     click_text TEXT,
     click_block_title TEXT,
@@ -83,6 +84,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     url_start TEXT,
     user_agent TEXT,
     ip_hash TEXT,
-    started_at TIMESTAMP DEFAULT NOW(),
-    ended_at TIMESTAMP
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    ended_at TIMESTAMPTZ
 );
