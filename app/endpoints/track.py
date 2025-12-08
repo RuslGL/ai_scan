@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 import asyncpg
 import aiohttp
+import hashlib
 from fastapi import APIRouter, Depends, Request
 
 from app.db import get_connection
@@ -12,11 +13,10 @@ from app.db import get_connection
 router = APIRouter()
 
 
-# -----------------------------
-#  GEO via ip-api (no mmdb)
-# -----------------------------
+# -------------------------------------
+#   GEO via ip-api.com/json
+# -------------------------------------
 async def geo_from_ip(ip: str | None):
-    """Returns (country, city) using ip-api.com."""
     if not ip:
         return None, None
 
@@ -33,80 +33,81 @@ async def geo_from_ip(ip: str | None):
     return None, None
 
 
-# -----------------------------
-#  POST /track
-# -----------------------------
+# -------------------------------------
+#             TRACK
+# -------------------------------------
 @router.post("/track")
 async def track_batch(
     request: Request,
     payload: Dict[str, Any],
     conn: asyncpg.Connection = Depends(get_connection)
 ):
-    """
-    Получение батча событий от SDK.
-    SDK передаёт site_url, uid, session_id, events[]
-    """
 
     site_url = payload.get("site_url")
     uid = payload.get("uid")
     session_id = payload.get("session_id")
     events: List[Dict[str, Any]] = payload.get("events", [])
 
-    # ----- GET CLIENT IP -----
+    # --- IP + GEO ---
     client_ip = request.client.host
+    ip_hash = hashlib.sha256(client_ip.encode()).hexdigest() if client_ip else None
     country, city = await geo_from_ip(client_ip)
 
-    # LOOP EVENTS
+    # ------------------------------------------
+    #   PROCESS EVENTS
+    # ------------------------------------------
     for ev in events:
         event_type = ev.get("event_type")
         timestamp = ev.get("ts")
         data: Dict[str, Any] = ev.get("payload", {})
 
-        # Convert timestamp (ms → datetime)
+        # Convert TS
         if isinstance(timestamp, int):
             event_time = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
         else:
             event_time = datetime.now(tz=timezone.utc)
 
-        # -----------------------------
-        #     Extract fields for DB
-        # -----------------------------
-
-        # BUTTON
+        # -------------------------
+        #  BUTTON
+        # -------------------------
         button_text = data.get("text")
         button_id = data.get("id")
         button_class = data.get("class_name")
-        button_type = None
-        button_form_id = None
 
-        # FORMS
+        # -------------------------
+        #  FORM
+        # -------------------------
         form_id = data.get("form_id")
-        form_title = data.get("form_title")
         form_button_text = data.get("button_text")
         form_structure = data.get("fields")
 
-        # HEARTBEAT & SCROLL
+        # -------------------------
+        #  HEARTBEAT
+        # -------------------------
         hb_scroll_percent = data.get("current_percent")
         hb_max_scroll = data.get("max_scroll_percent")
-        hb_scroll_y = data.get("scroll_y")
+        hb_scroll_y = data.get("scroll_y")  # SDK пока не отправляет, ок
         hb_session_duration_ms = data.get("session_duration_ms")
         hb_since_last_activity_ms = data.get("since_last_activity_ms")
 
-        # DEVICE META
+        # -------------------------
+        #  DEVICE META (SDK)
+        # -------------------------
         device = data.get("device", {})
+
         device_type = device.get("device_type")
         os = device.get("os")
         browser = device.get("browser")
-        user_agent = device.get("user_agent")
 
+        # Viewport / screen (пока SDK не отправляет — NULL)
         viewport_width = data.get("viewport_width")
         viewport_height = data.get("viewport_height")
         screen_width = data.get("screen_width")
         screen_height = data.get("screen_height")
 
-        # -----------------------------
-        #   INSERT INTO DB
-        # -----------------------------
+        # ------------------------------------------
+        #   INSERT
+        # ------------------------------------------
         await conn.execute(
             """
             INSERT INTO events (
@@ -119,11 +120,8 @@ async def track_batch(
                 button_text,
                 button_id,
                 button_class,
-                button_type,
-                button_form_id,
 
                 form_id,
-                form_title,
                 form_button_text,
                 form_structure,
 
@@ -147,11 +145,11 @@ async def track_batch(
             )
             VALUES (
                 $1,$2,$3,$4,$5,
-                $6,$7,$8,$9,$10,
-                $11,$12,$13,$14,
-                $15,$16,$17,$18,$19,
-                $20,$21,$22,$23,$24,$25,$26,
-                $27,$28,$29
+                $6,$7,$8,
+                $9,$10,$11,
+                $12,$13,$14,$15,$16,
+                $17,$18,$19,$20,$21,$22,$23,
+                $24,$25,$26
             )
             """,
             site_url,
@@ -163,11 +161,8 @@ async def track_batch(
             button_text,
             button_id,
             button_class,
-            button_type,
-            button_form_id,
 
             form_id,
-            form_title,
             form_button_text,
             form_structure,
 
@@ -185,7 +180,7 @@ async def track_batch(
             screen_width,
             screen_height,
 
-            client_ip,  # или hashed, если хочешь
+            ip_hash,
             country,
             city,
         )

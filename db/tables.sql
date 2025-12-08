@@ -57,52 +57,64 @@ CREATE TABLE IF NOT EXISTS site_structure (
     last_seen TIMESTAMPTZ DEFAULT NOW()
 );
 
--- EVENTS (SDK, финальная структура)
+------------------------------------------------------------
+--                EVENTS (SDK FINAL VERSION)
+------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
+    -- BASIC
     site_url TEXT NOT NULL,
     uid TEXT,
     session_id TEXT,
-
-    event_type TEXT,
+    event_type TEXT NOT NULL,
     event_time TIMESTAMPTZ DEFAULT NOW(),
 
+    --------------------------------------------------------
     -- CLICK BUTTON
+    --------------------------------------------------------
     button_text TEXT,
     button_id TEXT,
     button_class TEXT,
-    button_type TEXT,
 
-    -- FORMS
-    form_selector TEXT,
+    --------------------------------------------------------
+    -- FORM SUBMIT SUCCESS
+    --------------------------------------------------------
+    form_id TEXT,
     form_button_text TEXT,
     form_structure JSONB,
 
+    --------------------------------------------------------
     -- HEARTBEAT (scroll + activity)
+    --------------------------------------------------------
     hb_scroll_percent INT,
     hb_max_scroll INT,
     hb_scroll_y INT,
     hb_session_duration_ms BIGINT,
     hb_since_last_activity_ms BIGINT,
 
-    -- DEVICE INFO
+    --------------------------------------------------------
+    -- DEVICE META (SDK)
+    --------------------------------------------------------
     device_type TEXT,
     os TEXT,
     browser TEXT,
-    user_agent TEXT,
     viewport_width INT,
     viewport_height INT,
     screen_width INT,
     screen_height INT,
 
-    -- GEO (через IP, считаем на бэке)
+    --------------------------------------------------------
+    -- GEO (server-side)
+    --------------------------------------------------------
     ip_hash TEXT,
     country TEXT,
     city TEXT
 );
 
--- SESSIONS (пока не трогаем, пусть лежит)
+------------------------------------------------------------
+-- SESSIONS (отдельная аналитическая таблица)
+------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     site_id UUID REFERENCES sites(id),
