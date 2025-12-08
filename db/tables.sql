@@ -57,27 +57,52 @@ CREATE TABLE IF NOT EXISTS site_structure (
     last_seen TIMESTAMPTZ DEFAULT NOW()
 );
 
--- EVENTS (SDK)
+-- EVENTS (SDK, финальная структура)
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    site_url TEXT NOT NULL,             -- <- URL вместо UUID
-
+    site_url TEXT NOT NULL,
     uid TEXT,
-    session_id TEXT,                    -- <- было UUID, теперь TEXT
+    session_id TEXT,
+
     event_type TEXT,
+    event_time TIMESTAMPTZ DEFAULT NOW(),
 
-    event_time TIMESTAMPTZ DEFAULT NOW(),  -- <- UTC-aware
+    -- CLICK BUTTON
+    button_text TEXT,
+    button_id TEXT,
+    button_class TEXT,
+    button_type TEXT,
 
-    click_text TEXT,
-    click_block_title TEXT,
+    -- FORMS
+    form_selector TEXT,
+    form_button_text TEXT,
+    form_structure JSONB,
 
-    scroll_percent INT,
-    scroll_max INT,
-    scroll_milestone INT
+    -- HEARTBEAT (scroll + activity)
+    hb_scroll_percent INT,
+    hb_max_scroll INT,
+    hb_scroll_y INT,
+    hb_session_duration_ms BIGINT,
+    hb_since_last_activity_ms BIGINT,
+
+    -- DEVICE INFO
+    device_type TEXT,
+    os TEXT,
+    browser TEXT,
+    user_agent TEXT,
+    viewport_width INT,
+    viewport_height INT,
+    screen_width INT,
+    screen_height INT,
+
+    -- GEO (через IP, считаем на бэке)
+    ip_hash TEXT,
+    country TEXT,
+    city TEXT
 );
 
--- SESSIONS
+-- SESSIONS (пока не трогаем, пусть лежит)
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     site_id UUID REFERENCES sites(id),
