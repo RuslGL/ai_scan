@@ -1,19 +1,21 @@
 """
 Фоновый воркер для агрегирования событий в таблицу session_summary.
 
-Задачи воркера:
----------------
-1. Найти raw-сессии, для которых завершился очередной "визит"
+Задачи:
+-------
+1. Найти raw-сессии, у которых завершился очередной визит
    (Selector.find_closed_sessions).
 
-2. По каждой такой raw-сессии:
-   - загрузить все события (events_loader.load_events_for_session),
+2. Для каждой такой raw-сессии:
+   - загрузить события,
    - вырезать события, уже покрытые предыдущим summary,
-   - собрать summary (aggregator.build_session_summary),
-   - сохранить запись в session_summary (sql.insert_summary),
-   - опционально удалить исходные события из events (sql.delete_events_for_session).
+   - если новых событий нет — пропустить,
+   - если нет НИКАКОЙ активности в новых событиях — пропустить,
+   - собрать summary,
+   - сохранить summary,
+   - удалить исходные события (если включено).
 
-Умолчание: воркер запускает проход раз в 5 минут.
+Воркер запускается каждые 5 минут.
 """
 
 import asyncio
@@ -32,51 +34,57 @@ from .sql import (
 
 logger = logging.getLogger(__name__)
 
-# Частота запуска воркера (секунды)
-# По умолчанию 300 секунд = 5 минут
+# Интервал в секундах
 LOOP_SLEEP_SECONDS = int(os.getenv("SUMMARY_WORKER_SLEEP_SECONDS", "300"))
+
+
+def _has_real_activity(events: list) -> bool:
+    """
+    Проверяет, есть ли среди событий хоть какая-то реальная активность:
+    - не-heartbeat события,
+    - heartbeat, в которых есть scroll (hb_scroll_percent NOT NULL).
+    """
+    for e in events:
+        if e["event_type"] != "heartbeat":
+            return True
+
+        # heartbeat с реальным scroll
+        if e.get("hb_scroll_percent") is not None:
+            return True
+
+    return False
 
 
 async def process_closed_sessions() -> None:
     """
     Выполняет один проход:
     - находит закрытые raw-сессии,
-    - агрегирует их в summary,
-    - при необходимости очищает events.
-
-    Логика:
-    -------
-    1) Selector возвращает список raw_session_id, у которых:
-       - last_real_activity старше таймаута,
-       - и этот визит ещё не покрыт предыдущими summary.
-
-    2) Для каждого session_id:
-       - загружаем все events,
-       - обрезаем события, уже агрегированные ранее,
-       - строим summary-объект,
-       - вставляем в session_summary,
-       - (при включении очистки) удаляем events.
+    - агрегирует их,
+    - удаляет события (если включено).
     """
+
     session_ids: List[str] = await find_closed_sessions()
 
     if not session_ids:
         logger.debug("summary-worker: нет закрытых сессий для обработки")
         return
 
-    logger.info("summary-worker: найдено %d закрытых сессий", len(session_ids))
+    logger.info("summary-worker: найдено закрытых сессий: %d", len(session_ids))
 
     for session_id in session_ids:
         try:
             events = await load_events_for_session(session_id)
+
             if not events:
                 logger.warning(
-                    "summary-worker: для session_id=%s нет событий (пропуск)", session_id
+                    "summary-worker: session_id=%s — нет событий (пропуск)",
+                    session_id
                 )
                 continue
 
-            # -------------------------------------------------------
-            #   ВАЖНО: обрезаем события, уже покрытые предыдущими summary
-            # -------------------------------------------------------
+            # -------------------------
+            # Обрезаем по последнему summary
+            # -------------------------
             last_end = await get_last_summary_end_time(session_id)
 
             if last_end:
@@ -84,49 +92,50 @@ async def process_closed_sessions() -> None:
 
                 if not events:
                     logger.info(
-                        "summary-worker: session_id=%s — нет новых событий после %s (пропуск)",
+                        "summary-worker: session_id=%s — нет новых событий после %s (визита нет)",
                         session_id,
-                        last_end,
+                        last_end
                     )
                     continue
 
-            # -------------------------------------------------------
-            #   Формируем summary
-            # -------------------------------------------------------
+            # -------------------------
+            # Проверяем, есть ли реальная активность
+            # -------------------------
+            if not _has_real_activity(events):
+                logger.info(
+                    "summary-worker: session_id=%s — есть события, но НЕТ активности (пропуск)",
+                    session_id
+                )
+                continue
+
+            # -------------------------
+            # Формируем summary
+            # -------------------------
             summary = build_session_summary(events)
             await insert_summary(summary)
 
-            # -------------------------------------------------------
-            #   Удаление событий — может быть отключено для тестирования
-            # -------------------------------------------------------
+            # -------------------------
+            # Очищаем события
+            # -------------------------
             await delete_events_for_session(session_id)
 
             logger.info(
-                "summary-worker: успешно агрегирована session_id=%s", session_id
+                "summary-worker: session_id=%s — summary сохранён",
+                session_id
             )
 
         except Exception as e:
             logger.exception(
                 "summary-worker: ошибка при обработке session_id=%s: %s",
                 session_id,
-                e,
+                e
             )
 
 
 async def run_worker() -> None:
-    """
-    Основной цикл воркера.
-
-    Логика:
-    -------
-    - Бесконечный цикл:
-        - один проход process_closed_sessions(),
-        - пауза LOOP_SLEEP_SECONDS (по умолчанию 5 минут),
-        - повтор.
-    - Ошибки логируются, но не останавливают воркер.
-    """
+    """Бесконечный цикл воркера."""
     logger.info(
-        "summary-worker: старт воркера, интервал=%s сек. (~%s мин.)",
+        "summary-worker: старт, интервал=%s сек. (~%s мин.)",
         LOOP_SLEEP_SECONDS,
         LOOP_SLEEP_SECONDS // 60,
     )
@@ -135,7 +144,7 @@ async def run_worker() -> None:
         try:
             await process_closed_sessions()
         except Exception as e:
-            logger.exception("summary-worker: необработанная ошибка цикла: %s", e)
+            logger.exception("summary-worker: необработанная ошибка: %s", e)
 
         await asyncio.sleep(LOOP_SLEEP_SECONDS)
 
