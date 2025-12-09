@@ -40,7 +40,6 @@ async def track_batch(
     session_id = payload.get("session_id")
     events: List[Dict[str, Any]] = payload.get("events", [])
 
-    # REAL IP (cloudflare / nginx / local)
     client_ip = (
         request.headers.get("x-real-ip")
         or request.headers.get("x-forwarded-for")
@@ -49,28 +48,24 @@ async def track_batch(
 
     country, city = await geo_from_ip(client_ip)
 
-    # PROCESS EVENTS
     for ev in events:
         event_type = ev.get("event_type")
         ts = ev.get("ts")
         data: Dict[str, Any] = ev.get("payload", {})
 
-        # timestamp (ms → datetime)
+        # timestamp (ms -> datetime)
         if isinstance(ts, int):
             event_time = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
         else:
             event_time = datetime.now(tz=timezone.utc)
 
-        # CLICK FIELDS
+        # CLICK BUTTON
         button_text = data.get("text")
         button_id = data.get("id")
         button_class = data.get("class_name")
-        button_type = None
-        button_form_id = None
 
-        # FORM FIELDS
+        # FORM SUBMIT
         form_id = data.get("form_selector")
-        form_title = None
         form_button_text = data.get("button_text")
         form_structure = data.get("fields")
 
@@ -86,7 +81,6 @@ async def track_batch(
         device_type = device.get("device_type")
         os = device.get("os")
         browser = device.get("browser")
-        user_agent = device.get("user_agent")
         viewport_width = device.get("viewport_width")
         viewport_height = device.get("viewport_height")
         screen_width = device.get("screen_width")
@@ -104,11 +98,8 @@ async def track_batch(
                 button_text,
                 button_id,
                 button_class,
-                button_type,
-                button_form_id,
 
                 form_id,
-                form_title,
                 form_button_text,
                 form_structure,
 
@@ -132,11 +123,11 @@ async def track_batch(
             )
             VALUES (
                 $1,$2,$3,$4,$5,
-                $6,$7,$8,$9,$10,
-                $11,$12,$13,$14,
-                $15,$16,$17,$18,$19,
-                $20,$21,$22,$23,$24,$25,$26,
-                $27,$28,$29
+                $6,$7,$8,
+                $9,$10,$11,
+                $12,$13,$14,$15,$16,
+                $17,$18,$19,$20,$21,$22,$23,
+                $24,$25,$26
             )
             """,
             site_url,
@@ -148,11 +139,8 @@ async def track_batch(
             button_text,
             button_id,
             button_class,
-            button_type,
-            button_form_id,
 
             form_id,
-            form_title,
             form_button_text,
             form_structure,
 

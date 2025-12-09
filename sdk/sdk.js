@@ -8,10 +8,12 @@
     const SESSION_KEY = "ai_scan_session";
     const OFFLINE_QUEUE_KEY = "ai_scan_offline_queue";
 
-    // Новый параметр: site_url вместо site_id
     const siteUrl = location.hostname;
     const apiUrl = "https://ai-scan.tech/track";
 
+    // ---------------------------
+    //   ID / UID / SESSION
+    // ---------------------------
     function generateId() {
         return (
             Math.random().toString(36).slice(2) +
@@ -63,12 +65,8 @@
         lastActivityTs = now;
         persistSession();
 
-        enqueueEvent(
-            buildEvent("session_start", {
-                session_id: sessionId,
-                session_start_ts: sessionStartTs,
-            })
-        );
+        // С„РёРєСЃРёСЂСѓРµРј СЃС‚Р°СЂС‚ СЃРµСЃСЃРёРё
+        enqueueEvent(buildEvent("session_start", {}));
     }
 
     function persistSession() {
@@ -92,73 +90,90 @@
 
     loadOrCreateSession();
 
-    function getPageMeta() {
-        const doc = document.documentElement;
-        const body = document.body;
-        const scrollTop =
-            window.scrollY || doc.scrollTop || body.scrollTop || 0;
+    // ---------------------------
+    //   DEVICE / BROWSER META
+    // ---------------------------
+    function getDeviceInfo() {
+        const ua = (navigator.userAgent || "").toLowerCase();
 
-        const scrollHeight = Math.max(
-            body.scrollHeight,
-            doc.scrollHeight,
-            body.offsetHeight,
-            doc.offsetHeight,
-            body.clientHeight,
-            doc.clientHeight
-        );
+        let device_type = "desktop";
+        if (/mobile|iphone|ipod|android.*mobile/.test(ua)) {
+            device_type = "mobile";
+        } else if (/ipad|tablet/.test(ua)) {
+            device_type = "tablet";
+        }
 
-        const viewportHeight =
-            window.innerHeight || doc.clientHeight || body.clientHeight || 1;
+        let os = "Other";
+        if (ua.includes("windows")) os = "Windows";
+        else if (ua.includes("mac os x") || ua.includes("macintosh")) os = "macOS";
+        else if (ua.includes("android")) os = "Android";
+        else if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) os = "iOS";
+        else if (ua.includes("linux")) os = "Linux";
 
-        const maxScrollable = Math.max(scrollHeight - viewportHeight, 1);
+        let browser = "Other";
+        if (ua.includes("edg/")) browser = "Edge";
+        else if (ua.includes("opr/") || ua.includes("opera")) browser = "Opera";
+        else if (ua.includes("chrome") && !ua.includes("edg/") && !ua.includes("opr/"))
+            browser = "Chrome";
+        else if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("chromium"))
+            browser = "Safari";
+        else if (ua.includes("firefox")) browser = "Firefox";
 
-        const scrollPercent = Math.min(
-            100,
-            Math.max(0, Math.round((scrollTop / maxScrollable) * 100))
-        );
+        const vw = window.innerWidth || null;
+        const vh = window.innerHeight || null;
+        const sw = (window.screen && window.screen.width) || null;
+        const sh = (window.screen && window.screen.height) || null;
 
         return {
-            page_url: location.href,
-            page_title: document.title || null,
-            referrer: document.referrer || null,
+            device_type: device_type,
+            os: os,
+            browser: browser,
             user_agent: navigator.userAgent || null,
-            language: navigator.language || null,
-            viewport_width: window.innerWidth || null,
-            viewport_height: window.innerHeight || null,
-            screen_width: (window.screen && window.screen.width) || null,
-            screen_height: (window.screen && window.screen.height) || null,
-            scroll_y: scrollTop,
-            scroll_percent: scrollPercent,
+            viewport_width: vw,
+            viewport_height: vh,
+            screen_width: sw,
+            screen_height: sh,
         };
     }
 
+    // ------------------------
+    //   SCROLL PERCENT (Safari ok)
+    // ------------------------
     function calcScrollPercent() {
-        const doc = document.documentElement;
-        const body = document.body;
+        try {
+            const el = document.scrollingElement || document.documentElement;
 
-        const scrollTop =
-            window.scrollY || doc.scrollTop || body.scrollTop || 0;
+            const scrollTop =
+                window.pageYOffset ||
+                el.scrollTop ||
+                0;
 
-        const scrollHeight = Math.max(
-            body.scrollHeight,
-            doc.scrollHeight,
-            body.offsetHeight,
-            doc.offsetHeight,
-            body.clientHeight,
-            doc.clientHeight
-        );
+            const scrollHeight = el.scrollHeight || 0;
+            const clientHeight = el.clientHeight || window.innerHeight || 1;
 
-        const viewportHeight =
-            window.innerHeight || doc.clientHeight || body.clientHeight || 1;
+            const maxScrollable = Math.max(scrollHeight - clientHeight, 1);
 
-        const maxScrollable = Math.max(scrollHeight - viewportHeight, 1);
+            return Math.min(
+                100,
+                Math.max(0, Math.round((scrollTop / maxScrollable) * 100))
+            );
+        } catch (e) {
+            return 0;
+        }
+    }
 
-        return Math.min(
-            100,
-            Math.max(0, Math.round((scrollTop / maxScrollable) * 100))
+    function getScrollY() {
+        const el = document.scrollingElement || document.documentElement;
+        return (
+            window.pageYOffset ||
+            el.scrollTop ||
+            0
         );
     }
 
+    // ---------------------------
+    //   QUEUE / OFFLINE QUEUE
+    // ---------------------------
     const queue = [];
     let offlineQueue = loadOfflineQueue();
 
@@ -197,7 +212,9 @@
         let payloadEvents = [];
 
         if (offlineQueue.length > 0) {
-            payloadEvents = payloadEvents.concat(offlineQueue.splice(0, BATCH_SIZE));
+            payloadEvents = payloadEvents.concat(
+                offlineQueue.splice(0, BATCH_SIZE)
+            );
         }
 
         if (queue.length > 0 && payloadEvents.length < BATCH_SIZE) {
@@ -207,30 +224,19 @@
 
         if (payloadEvents.length === 0) return;
 
-        const body = JSON.stringify({
-            site_url: siteUrl,  // <-- важное изменение
-            uid: uid,
-            session_id: sessionId,
-            events: payloadEvents,
-        });
-
         fetch(apiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body,
-        })
-            .then((res) => {
-                if (!res.ok) {
-                    offlineQueue = payloadEvents.concat(offlineQueue);
-                    saveOfflineQueue();
-                } else {
-                    saveOfflineQueue();
-                }
-            })
-            .catch(() => {
-                offlineQueue = payloadEvents.concat(offlineQueue);
-                saveOfflineQueue();
-            });
+            body: JSON.stringify({
+                site_url: siteUrl,
+                uid: uid,
+                session_id: sessionId,
+                events: payloadEvents,
+            }),
+        }).catch(() => {
+            offlineQueue = payloadEvents.concat(offlineQueue);
+            saveOfflineQueue();
+        });
     }
 
     setInterval(flushQueue, BATCH_INTERVAL);
@@ -243,16 +249,20 @@
         }
     });
 
+    // ---------------------------
+    //   BUILD EVENT / TRACK
+    // ---------------------------
     function buildEvent(event_type, payload) {
         return {
             event_id: generateId(),
-            event_type,
+            event_type: event_type,
             ts: Date.now(),
-            site_url: siteUrl,  // <-- исправлено
+            site_url: siteUrl,
             uid: uid,
             session_id: sessionId,
-            meta: getPageMeta(),
-            payload: payload || {},
+            payload: Object.assign({}, payload || {}, {
+                device: getDeviceInfo(),
+            }),
         };
     }
 
@@ -261,260 +271,188 @@
         enqueueEvent(buildEvent(event_type, payload));
     }
 
-    document.addEventListener(
-        "click",
-        function (e) {
-            const target = e.target;
-            if (!target) return;
+    // ------------------------------
+    //      CLICK ONLY ON BUTTONS
+    // ------------------------------
+    function isButton(el) {
+        if (!el) return false;
 
-            const info = extractElementInfo(target);
-            track("click", {
-                tag: info.tag,
-                id: info.id,
-                class_name: info.className,
-                text: info.text,
-                selector: info.selector,
-                block_title: info.blockTitle,
-                section_name: info.sectionName,
-                x: e.clientX,
-                y: e.clientY,
-            });
-        },
-        true
-    );
+        const tag = el.tagName ? el.tagName.toLowerCase() : "";
+        if (tag === "button") return true;
 
-    function extractElementInfo(el) {
-        const tag = (el.tagName || "").toLowerCase();
-        const id = el.id || null;
-        const className = (el.className || "").toString();
-        const text = (el.innerText || el.textContent || "").trim().slice(0, 120);
+        if (tag === "input") {
+            const type = (el.type || "").toLowerCase();
+            if (type === "button" || type === "submit") return true;
+        }
 
-        const selector = buildSelector(el);
-        const blockTitle = findNearestTitle(el);
-        theSection = findSectionName(el);
+        const cls = (el.className || "").toString().toLowerCase();
+        if (
+            cls.includes("btn") ||
+            cls.includes("button") ||
+            cls.includes("t-btn")
+        ) {
+            return true;
+        }
 
-        return { tag, id, className, text, selector, blockTitle, sectionName: theSection };
+        return false;
     }
 
     function buildSelector(el) {
         if (!el) return null;
         const path = [];
+
         while (el && el.nodeType === 1 && el !== document.body) {
             let selector = el.tagName.toLowerCase();
+
             if (el.id) {
                 selector += "#" + el.id;
                 path.unshift(selector);
                 break;
-            } else {
-                if (el.className) {
-                    const cls = el.className
-                        .trim()
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .join(".");
-                    if (cls) selector += "." + cls;
-                }
-                const parent = el.parentElement;
-                if (parent) {
-                    const siblings = Array.from(parent.children).filter(
-                        (c) => c.tagName === el.tagName
-                    );
-                    if (siblings.length > 1) {
-                        const idx = siblings.indexOf(el);
-                        selector += `:nth-of-type(${idx + 1})`;
-                    }
+            }
+
+            if (el.className) {
+                const cls = el.className
+                    .toString()
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .join(".");
+                if (cls) selector += "." + cls;
+            }
+
+            const parent = el.parentElement;
+            if (parent) {
+                const siblings = Array.from(parent.children).filter(function (x) {
+                    return x.tagName === el.tagName;
+                });
+                if (siblings.length > 1) {
+                    selector += ":nth-of-type(" + (siblings.indexOf(el) + 1) + ")";
                 }
             }
+
             path.unshift(selector);
             el = el.parentElement;
         }
+
         return path.join(" > ");
     }
 
-    function findNearestTitle(el) {
-        let node = el;
-        while (node && node !== document.body) {
-            const h =
-                node.querySelector &&
-                node.querySelector("h1,h2,h3,h4");
-            if (h && (h.innerText || h.textContent)) {
-                return (h.innerText || h.textContent).trim().slice(0, 120);
-            }
-            node = node.parentElement;
-        }
-        return null;
-    }
+    document.addEventListener(
+        "click",
+        function (e) {
+            const t = e.target;
+            if (!isButton(t)) return;
 
-    function findSectionName(el) {
-        let node = el;
-        while (node && node !== document.body) {
-            if (node.getAttribute) {
-                const ds =
-                    node.getAttribute("data-section-name") ||
-                    node.getAttribute("aria-label");
-                if (ds) return ds.slice(0, 120);
-            }
-            node = node.parentElement;
-        }
-        return null;
-    }
+            const rawText =
+                (t.innerText || t.textContent || "").trim().slice(0, 80);
 
-    let maxScrollPercent = calcScrollPercent();
-    let lastScrollMilestone = 0;
-    let scrollTimeout = null;
+            var eventName = rawText
+                .replace(/\s+/g, "_")
+                .replace(/[^a-zA-Z0-9Рђ-РЇР°-СЏ_]/g, "")
+                .slice(0, 40);
 
-    window.addEventListener(
-        "scroll",
-        function () {
-            if (scrollTimeout) return;
-            scrollTimeout = setTimeout(function () {
-                scrollTimeout = null;
-                const p = calcScrollPercent();
-                if (p > maxScrollPercent) maxScrollPercent = p;
+            if (!eventName) eventName = "button";
 
-                const milestone = Math.floor(p / 10) * 10;
-                if (milestone >= 10 && milestone > lastScrollMilestone) {
-                    lastScrollMilestone = milestone;
-                    track("scroll_depth", {
-                        current_percent: p,
-                        max_percent: maxScrollPercent,
-                        milestone: milestone,
-                    });
-                }
-            }, 250);
+            const event_type = "click_button:" + eventName;
+
+            track(event_type, {
+                id: t.id || null,
+                class_name: t.className || null,
+                text: rawText,
+                selector: buildSelector(t)
+            });
         },
-        { passive: true }
+        true
     );
 
-    let sessionStartMs = Date.now();
-
-    ["click", "scroll", "keydown", "mousemove", "touchstart"].forEach((ev) => {
-        window.addEventListener(ev, markActivity, { passive: true });
-    });
-
-    setInterval(function () {
-        const now = Date.now();
-        const sessionDuration = now - sessionStartMs;
-        const sinceLastActivity = now - (lastActivityTs || sessionStartMs);
-        track("heartbeat", {
-            session_duration_ms: sessionDuration,
-            since_last_activity_ms: sinceLastActivity,
-            max_scroll_percent: maxScrollPercent,
-        });
-    }, HEARTBEAT_INTERVAL);
-
-    function initFormsTracking() {
-        const forms = document.querySelectorAll("form");
-        forms.forEach((form, index) => {
-            const formId =
-                form.id ||
-                form.getAttribute("name") ||
-                `form_${index}`;
-            const meta = extractFormMeta(form, formId);
-
-            track("form_view", meta);
-
-            let started = false;
-            form.addEventListener("focusin", function () {
-                if (!started) {
-                    started = true;
-                    track("form_start", meta);
-                }
-            });
-
-            form.addEventListener("submit", function () {
-                const structure = extractFormStructure(form);
-                track(
-                    "form_submit",
-                    Object.assign({}, meta, {
-                        fields: structure,
-                    })
-                );
-            });
-        });
-    }
-
-    function extractFormMeta(form, formId) {
-        const submitBtn = form.querySelector(
-            "button[type=submit], input[type=submit]"
-        );
-        const btnText =
-            submitBtn &&
-            (submitBtn.innerText ||
-                submitBtn.value ||
-                "")
-                .trim()
-                .slice(0, 120) ||
-            null;
-        const title = findNearestTitle(form);
-        const selector = buildSelector(form);
-        return {
-            form_id: formId,
-            form_selector: selector,
-            form_title: title,
-            submit_text: btnText,
-        };
-    }
-
+    // ------------------------------
+    //      FORM SUBMIT SUCCESS
+    // ------------------------------
     function extractFormStructure(form) {
         const fields = [];
-        const elements = form.querySelectorAll(
-            "input, select, textarea"
-        );
-        elements.forEach((el) => {
-            const tag = (el.tagName || "").toLowerCase();
-            const type =
-                (el.getAttribute("type") || "").toLowerCase() ||
-                (tag === "textarea"
-                    ? "textarea"
-                    : tag === "select"
-                    ? "select"
-                    : "text");
+        const els = form.querySelectorAll("input, textarea, select");
+
+        els.forEach(function (el) {
             fields.push({
                 name: el.name || null,
-                tag: tag,
-                type: type,
+                type: (el.type || el.tagName || "").toLowerCase(),
                 required: !!el.required,
             });
         });
+
         return fields;
     }
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initFormsTracking);
-    } else {
-        initFormsTracking();
+    function getSubmitButtonText(form) {
+        const btn = form.querySelector("button[type=submit], input[type=submit]");
+        if (!btn) return null;
+        return (btn.innerText || btn.value || "")
+            .trim()
+            .slice(0, 80);
     }
 
+    document.addEventListener(
+        "submit",
+        function (e) {
+            const form = e.target;
+            if (!form || form.nodeName !== "FORM") return;
+
+            const fields = extractFormStructure(form);
+            const btnText = getSubmitButtonText(form) || "";
+
+            var slug = btnText
+                .replace(/\s+/g, "_")
+                .replace(/[^a-zA-Z0-9Рђ-РЇР°-СЏ_]/g, "")
+                .slice(0, 40);
+
+            if (!slug) slug = "submit";
+
+            const event_type = "form_submit_success:" + slug;
+
+            track(event_type, {
+                form_selector: buildSelector(form),
+                fields: fields,
+                button_text: btnText || null,
+            });
+        },
+        true
+    );
+
+    // ---------------------------
+    //      HEARTBEAT + SCROLL
+    // ---------------------------
+    let sessionStartMs = Date.now();
+    let maxScrollPercent = 0;
+
+    setInterval(function () {
+        const now = Date.now();
+        const currentPercent = calcScrollPercent();
+        if (currentPercent > maxScrollPercent) maxScrollPercent = currentPercent;
+
+        const scrollY = getScrollY();
+
+        track("heartbeat", {
+            session_duration_ms: now - sessionStartMs,
+            since_last_activity_ms: now - (lastActivityTs || sessionStartMs),
+            scroll_percent: currentPercent,
+            max_scroll_percent: maxScrollPercent,
+            scroll_y: scrollY,
+        });
+    }, HEARTBEAT_INTERVAL);
+
+    // ---------------------------
+    //      PAGE VIEW
+    // ---------------------------
     track("page_view", {
         entry_scroll_percent: calcScrollPercent(),
     });
 
-    function sendPageExit(reason) {
-        track("page_exit", {
-            reason: reason || "unload",
-            final_scroll_percent: calcScrollPercent(),
-            max_scroll_percent: maxScrollPercent,
-            session_duration_ms: Date.now() - sessionStartMs,
-        });
-        flushQueue();
-    }
-
-    window.addEventListener("beforeunload", function () {
-        sendPageExit("beforeunload");
-    });
-
-    document.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") {
-            sendPageExit("hidden");
-        }
-    });
-
+    // ---------------------------
+    //      PUBLIC API
+    // ---------------------------
     window.aiScan = {
         uid: uid,
         session_id: sessionId,
-        track: function (event_type, payload) {
-            track(event_type, payload || {});
-        },
+        track: track,
     };
 })();
