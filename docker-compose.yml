@@ -1,4 +1,7 @@
 services:
+  # --------------------------------------------------------------------
+  # POSTGRES
+  # --------------------------------------------------------------------
   postgres:
     image: postgres:15
     container_name: ai_scan_postgres
@@ -6,15 +9,23 @@ services:
     env_file:
       - .env
     environment:
+      TZ: "UTC"
+      PGTZ: "UTC"
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    command:
+      - "postgres"
+      - "-c"
+      - "timezone=UTC"
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # --- Миграция для таблицы session_summary ---------------------------
+  # --------------------------------------------------------------------
+  # MIGRATION: create session_summary table
+  # --------------------------------------------------------------------
   migrate_summary:
     build: .
     container_name: ai_scan_summary_migration
@@ -26,7 +37,9 @@ services:
       sh -c "python -m summary.sql"
     restart: "no"
 
-  # --- FASTAPI --------------------------------------------------------
+  # --------------------------------------------------------------------
+  # FASTAPI
+  # --------------------------------------------------------------------
   fastapi:
     build: .
     container_name: ai_scan_fastapi
@@ -35,14 +48,16 @@ services:
       - .env
     depends_on:
       - postgres
-      - migrate_summary    # FastAPI стартует после создания session_summary
+      - migrate_summary
     ports:
       - "8000:8000"
     command: >
       sh -c "python db/create_tables.py &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  # --- Summary Worker -------------------------------------------------
+  # --------------------------------------------------------------------
+  # SUMMARY WORKER
+  # --------------------------------------------------------------------
   summary_worker:
     build: .
     container_name: ai_scan_summary_worker
@@ -51,7 +66,7 @@ services:
       - .env
     depends_on:
       - postgres
-      - migrate_summary    # Worker стартует после создания session_summary
+      - migrate_summary
     command: >
       sh -c "python -m summary.worker"
 
