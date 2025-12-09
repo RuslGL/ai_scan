@@ -3,23 +3,28 @@
 
 Логика:
 -------
-1) last_real_activity = последний момент, когда была активность:
-   - click (event_type != 'heartbeat')
-   - heartbeat с изменением прокрутки
+1) last_real_activity = последний момент, когда была реальная активность:
+   - любой event_type != 'heartbeat' (клики, сабмиты и т.п.)
+   - ИЛИ heartbeat, в котором изменился hb_scroll_percent
+     относительно предыдущего значения для этой session_id.
 
-2) Сессия-кандидат:
+   Проще:
+   - если скролл не меняется и кликов нет — пользователь считается неактивным,
+     даже если heartbeat продолжает приходить.
+
+2) Сессия-кандидат на закрытие:
    now() - last_real_activity >= INACTIVITY_MINUTES
 
-3) НО summary может уже быть создано ранее.
-   Значит нужно взять максимум end_time в session_summary для этой raw_session_id.
-
-4) Новый визит:
-   last_real_activity > max_summary_end_time(raw_session_id)
+3) Один raw_session_id может иметь несколько "визитов".
+   Поэтому смотрим, не перекрыт ли last_real_activity уже существующим summary:
+   - берём MAX(end_time) для raw_session_id в session_summary;
+   - новый визит, если last_real_activity > last_summary_end.
 """
 
 import os
 from typing import List
 from asyncpg import Record
+
 from .db import get_connection
 
 INACTIVITY_MINUTES = int(os.getenv("SUMMARY_INACTIVITY_MINUTES", "15"))
@@ -28,24 +33,56 @@ INACTIVITY_MINUTES = int(os.getenv("SUMMARY_INACTIVITY_MINUTES", "15"))
 async def find_closed_sessions() -> List[str]:
     """
     Возвращает список raw_session_id, для которых:
-    - активность закончилась (timeout),
+    - последняя реальная активность была старше INACTIVITY_MINUTES,
     - и эта активность ещё НЕ покрыта предыдущим summary.
 
-    Таким образом один raw_session_id может дать
-    несколько summary (отдельные визиты).
+    Реальная активность:
+    --------------------
+    - все события с event_type != 'heartbeat';
+    - heartbeat, у которых hb_scroll_percent ИЗМЕНИЛСЯ
+      относительно предыдущего значения (LAG по session_id).
+
+    Таким образом:
+    - heartbeat, который идёт бесконечно с одним и тем же процентом скролла,
+      НЕ продлевает сессию и НЕ мешает её закрыть.
     """
     conn = await get_connection()
     try:
         query = f"""
-        WITH activity AS (
+        WITH hb AS (
+            SELECT
+                session_id,
+                event_time,
+                hb_scroll_percent,
+                LAG(hb_scroll_percent) OVER (
+                    PARTITION BY session_id
+                    ORDER BY event_time
+                ) AS prev_scroll
+            FROM events
+            WHERE event_type = 'heartbeat'
+        ),
+
+        activity AS (
             SELECT
                 session_id,
                 MAX(event_time) AS last_real_activity
-            FROM events
-            WHERE (
-                event_type != 'heartbeat'
-                OR hb_scroll_percent IS NOT NULL
-            )
+            FROM (
+                -- Любые не-heartbeat события (клики и т.п.)
+                SELECT
+                    session_id,
+                    event_time
+                FROM events
+                WHERE event_type != 'heartbeat'
+
+                UNION ALL
+
+                -- Heartbeat только в моменты изменения скролла
+                SELECT
+                    session_id,
+                    event_time
+                FROM hb
+                WHERE hb_scroll_percent IS DISTINCT FROM prev_scroll
+            ) AS t
             GROUP BY session_id
         ),
 
