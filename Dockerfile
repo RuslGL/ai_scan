@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем исходный код
 COPY . /app
 
-# Открываем порт API
+# Открываем порт API (для FastAPI-сервиса)
 EXPOSE 8000
 
-# Старт сервера FastAPI (worker запускается через docker-compose)
+# Дефолтная команда (переопределяется в docker-compose для fastapi/worker)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -14,18 +14,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # --- Создание таблицы session_summary ---------------------------------
+  # --- Миграция для таблицы session_summary ---------------------------
   migrate_summary:
     build: .
     container_name: ai_scan_summary_migration
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       - postgres
     command: >
-      sh -c "python summary/sql.py"
+      sh -c "python -m summary.sql"
     restart: "no"
 
-  # --- FASTAPI -----------------------------------------------------------
+  # --- FASTAPI --------------------------------------------------------
   fastapi:
     build: .
     container_name: ai_scan_fastapi
@@ -34,14 +35,14 @@ services:
       - .env
     depends_on:
       - postgres
-      - migrate_summary      # <--- FastAPI стартует только после миграции summary
+      - migrate_summary    # FastAPI стартует после создания session_summary
     ports:
       - "8000:8000"
     command: >
       sh -c "python db/create_tables.py &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  # --- Summary Worker ----------------------------------------------------
+  # --- Summary Worker -------------------------------------------------
   summary_worker:
     build: .
     container_name: ai_scan_summary_worker
@@ -50,7 +51,7 @@ services:
       - .env
     depends_on:
       - postgres
-      - migrate_summary      # <--- Worker стартует только после миграции summary
+      - migrate_summary    # Worker стартует после создания session_summary
     command: >
       sh -c "python -m summary.worker"
 
