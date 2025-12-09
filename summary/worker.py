@@ -97,9 +97,9 @@ async def process_closed_sessions() -> None:
             await insert_summary(summary)
 
             # -------------------------------------------------------
-            #   Удаление событий — пока отключено для тестирования
+            #   Удаление событий — может быть отключено для тестирования
             # -------------------------------------------------------
-            # await delete_events_for_session(session_id)
+            await delete_events_for_session(session_id)
 
             logger.info(
                 "summary-worker: успешно агрегирована session_id=%s", session_id
