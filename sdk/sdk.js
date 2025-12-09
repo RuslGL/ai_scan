@@ -65,7 +65,7 @@
         lastActivityTs = now;
         persistSession();
 
-        // С„РёРєСЃРёСЂСѓРµРј СЃС‚Р°СЂС‚ СЃРµСЃСЃРёРё
+        // фиксируем старт сессии
         enqueueEvent(buildEvent("session_start", {}));
     }
 
@@ -348,7 +348,7 @@
 
             var eventName = rawText
                 .replace(/\s+/g, "_")
-                .replace(/[^a-zA-Z0-9Рђ-РЇР°-СЏ_]/g, "")
+                .replace(/[^a-zA-Z0-9А-Яа-я_]/g, "")
                 .slice(0, 40);
 
             if (!eventName) eventName = "button";
@@ -402,7 +402,7 @@
 
             var slug = btnText
                 .replace(/\s+/g, "_")
-                .replace(/[^a-zA-Z0-9Рђ-РЇР°-СЏ_]/g, "")
+                .replace(/[^a-zA-Z0-9А-Яа-я_]/g, "")
                 .slice(0, 40);
 
             if (!slug) slug = "submit";

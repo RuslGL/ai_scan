@@ -19,5 +19,5 @@ COPY . /app
 # Открываем порт API
 EXPOSE 8000
 
-# Старт сервера (без миграций, миграции выполняются в docker-compose)
+# Старт сервера FastAPI (worker запускается через docker-compose)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
