@@ -1,10 +1,19 @@
 """
 Модуль агрегатора данных для формирования записи в таблице session_summary.
 
-Логика:
-- На вход подаётся список событий одной raw-сессии (events), уже отсортированных по времени.
-- Модуль НЕ взаимодействует с базой данных.
-- На выходе формируется словарь, готовый для вставки в summary-таблицу.
+Новая логика (2025):
+--------------------
+Формируем summary ТОЛЬКО по реальной активности:
+- heartbeat со scroll-change;
+- любое событие event_type != heartbeat.
+
+heartbeat:
+- со scroll NULL → игнорируется,
+- без scroll-change → игнорируется,
+они НЕ влияют ни на end_time, ни на final_scroll_depth.
+
+final_scroll_depth = последний scroll среди heartbeat, которые были real-activity.
+end_time = время последнего события, которое было real-activity.
 """
 
 from datetime import datetime
@@ -13,16 +22,7 @@ import json
 
 
 def _first_non_null(events: List[Dict[str, Any]], key: str):
-    """
-    Возвращает первое непустое значение поля `key` в списке событий.
-
-    Используется для извлечения стабильных характеристик сессии:
-    - страна
-    - город
-    - устройство
-    - браузер
-    - OS
-    """
+    """Возвращает первое непустое значение поля key в списке событий."""
     for e in events:
         v = e.get(key)
         if v is not None:
@@ -32,109 +32,79 @@ def _first_non_null(events: List[Dict[str, Any]], key: str):
 
 def build_session_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Формирует структуру session_summary по событиям одной raw-сессии.
+    Формирует структуру summary по событиям визита.
 
-    Параметры:
-    ----------
-    events : List[Dict[str, Any]]
-        Список событий (строк из таблицы events) одной сессии.
-        Ожидается сортировка по event_time ASC.
-
-    Логика агрегации:
-    -----------------
-    1. Базовые поля:
-       - raw_session_id
-       - uid, site_url
-       - start_time / end_time
-       - duration_seconds
-
-    2. Гео + устройство:
-       Берём первое непустое значение из списка событий.
-
-    3. Scroll:
-       Извлекается из heartbeat-событий.
-       - max_scroll_depth — максимальный процент прокрутки.
-       - final_scroll_depth — финальное значение.
-       - scroll_stops — список «остановок» >30 секунд:
-            [
-                { "depth": 42.3, "duration_sec": 31.1 },
-                ...
-            ]
-
-    4. Clicks:
-       Все события, где event_type != 'heartbeat':
-       - группируются по (event_type, button_text)
-       - считаются:
-            - количество
-            - время первого/последнего клика
-            - button_id
-
-    5. Итоговый объект:
-       Возвращается словарь, поля которого совпадают с колонками таблицы session_summary.
-       Поля scroll_stops и click_buttons сериализуются в JSON-строки.
-
-    Возвращает:
-    -----------
-    dict : Готовая запись для таблицы session_summary.
+    Ожидается:
+    - события отсортированы по времени ASC;
+    - события не содержат heartbeat со scroll NULL (worker удаляет);
+    - события не содержат heartbeat без scroll-change.
     """
 
     if not events:
         raise ValueError("build_session_summary() received empty event list")
 
-    # ---------- Базовые данные ----------
+    # ----------- Базовые поля сессии -----------
     raw_session_id = events[0]["session_id"]
     uid = events[0].get("uid")
     site_url = events[0].get("site_url")
 
+    # start_time = первое ДЕЙСТВИЕ визита
     times = [e["event_time"] for e in events]
     start_time: datetime = min(times)
+
+    # end_time = последнее ДЕЙСТВИЕ (scroll-change или click)
+    # worker гарантирует, что heartbeat-флуд отсутствует в events
     end_time: datetime = max(times)
+
     duration_seconds = (end_time - start_time).total_seconds()
 
-    # ---------- Гео и устройство ----------
+    # ----------- Гео + устройство -----------
     country = _first_non_null(events, "country")
     city = _first_non_null(events, "city")
     device_type = _first_non_null(events, "device_type")
     os_name = _first_non_null(events, "os")
     browser = _first_non_null(events, "browser")
 
-    # ---------- Heartbeat / Scroll ----------
-    hb_events = [e for e in events if e["event_type"] == "heartbeat"]
+    # ----------- Scroll (только реальная активность) -----------
+    hb_events = [
+        e for e in events
+        if e["event_type"] == "heartbeat"
+        and e.get("hb_scroll_percent") is not None
+    ]
 
+    # Мы знаем: worker гарантирует, что здесь только scroll-change heartbeat
+    # → можно просто взять scroll из последнего
     max_scroll_depth = None
     final_scroll_depth = None
-    scroll_stops = []
 
     if hb_events:
-        scroll_percents = [
-            e.get("hb_scroll_percent")
-            for e in hb_events
-            if e.get("hb_scroll_percent") is not None
-        ]
-        if scroll_percents:
-            max_scroll_depth = float(max(scroll_percents))
-            final_scroll_depth = float(scroll_percents[-1])
+        scroll_values = [float(e["hb_scroll_percent"]) for e in hb_events]
+        max_scroll_depth = max(scroll_values)
+        final_scroll_depth = scroll_values[-1]  # последний real-scroll
 
-        # поиск остановок
-        prev_depth = None
-        for e in hb_events:
-            depth = e.get("hb_scroll_percent")
-            since_ms = e.get("hb_since_last_activity_ms")
-            if depth is None or since_ms is None:
-                prev_depth = depth
-                continue
+    # ----------- Scroll stops (только для real-scroll heartbeat) -----------
+    scroll_stops = []
+    prev_depth = None
+    for e in hb_events:
+        depth = e.get("hb_scroll_percent")
+        since_ms = e.get("hb_since_last_activity_ms")
 
-            if since_ms >= 30_000:  # 30 сек
-                stop_depth = prev_depth if prev_depth is not None else depth
-                scroll_stops.append(
-                    {
-                        "depth": float(stop_depth),
-                        "duration_sec": float(since_ms / 1000),
-                    }
-                )
+        if depth is None or since_ms is None:
             prev_depth = depth
+            continue
 
-    # ---------- Clicks ----------
+        if since_ms >= 30_000:  # > 30 секунд стоп
+            stop_depth = prev_depth if prev_depth is not None else depth
+            scroll_stops.append(
+                {
+                    "depth": float(stop_depth),
+                    "duration_sec": float(since_ms / 1000),
+                }
+            )
+
+        prev_depth = depth
+
+    # ----------- Clicks -----------
     action_events = [e for e in events if e["event_type"] != "heartbeat"]
     total_actions = len(action_events)
 
@@ -172,7 +142,7 @@ def build_session_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         for b in buttons_acc.values()
     ]
 
-    # ---------- Итог ----------
+    # ----------- Итоговый объект summary -----------
     return {
         "raw_session_id": raw_session_id,
         "uid": uid,

@@ -1,31 +1,42 @@
 """
-Определение raw-сессий, у которых завершился очередной "визит".
+Определение raw-сессий, у которых завершился визит
+и которые нужно отправить в aggregator для формирования Summary.
 
-Логика:
--------
-1) last_real_activity = последний момент, когда была реальная активность:
-   - любой event_type != 'heartbeat' (клики, сабмиты и т.п.);
-   - ИЛИ heartbeat, в котором ИЗМЕНИЛСЯ hb_scroll_percent
-     относительно предыдущего НЕ-NULL значения для этой session_id.
+Новая логика 2025:
+------------------
+1) Реальная активность:
+   - любое событие, event_type != 'heartbeat';
+   - heartbeat, у которого hb_scroll_percent ИЗМЕНИЛСЯ
+     относительно предыдущего НЕ-NULL heartbeat.
 
-   Важно:
-   - heartbeat с hb_scroll_percent IS NULL полностью игнорируются
-     (они не участвуют ни в лаге, ни в определении активности);
-   - если скролл не меняется и кликов нет — пользователь считается неактивным,
-     даже если heartbeat продолжает приходить раз в N секунд.
+   heartbeat:
+     - с NULL scroll → полностью игнорируются;
+     - с тем же scroll → не активность.
 
-2) Сессия-кандидат на закрытие:
-   now() - last_real_activity >= INACTIVITY_MINUTES.
+2) Визит считается закрытым, если:
+       now() - last_real_activity >= 15 минут.
+   И только тогда мы создаём Summary.
 
-3) Один raw_session_id может иметь несколько "визитов".
-   Поэтому смотрим, не перекрыт ли last_real_activity уже существующим summary:
-   - берём MAX(end_time) для raw_session_id в session_summary;
-   - новый визит, если last_real_activity > last_summary_end.
+3) После создания Summary:
+   - В summary пишется final_scroll_depth = последний scroll heartbeat.
+   - Все события визита удаляются (это делает worker).
+
+4) После закрытия визита:
+   - HEARTBEAT со scroll NULL → просто удаляем (worker).
+   - HEARTBEAT со scroll без изменений → удаляем (worker).
+   - HEARTBEAT со scroll-change → это новый визит.
+
+5) selector выбирает session_id только если:
+   - визит закрыт по неактивности
+   И К ТОМУ ЖЕ:
+   - после последнего summary был scroll-change или другое реальное событие.
+
+То есть selector НЕ должен возвращать:
+   - heartbeat-флуд после закрытия визита с тем же scroll.
 """
 
 import os
 from typing import List
-
 from asyncpg import Record
 
 from .db import get_connection
@@ -35,33 +46,27 @@ INACTIVITY_MINUTES = int(os.getenv("SUMMARY_INACTIVITY_MINUTES", "15"))
 
 async def find_closed_sessions() -> List[str]:
     """
-    Возвращает список raw_session_id, для которых:
-    - последняя реальная активность была старше INACTIVITY_MINUTES,
-    - и эта активность ещё НЕ покрыта предыдущим summary.
+    Возвращает список session_id, которые:
 
-    Реальная активность:
-    --------------------
-    - любые события с event_type != 'heartbeat' (клики, сабмиты и т.п.);
-    - heartbeat, у которых hb_scroll_percent ИЗМЕНИЛСЯ
-      относительно предыдущего НЕ-NULL значения (lag по session_id).
+    1) Имеют last_real_activity > last_summary_end.
+    2) last_real_activity < NOW() - 15 minutes.
+    3) last_real_activity определяется:
+        - клики, сабмиты и т.п.
+        - heartbeat со scroll-change.
+        - heartbeat со scroll NULL → полностью игнорируется.
+        - heartbeat без scroll-change → тоже игнорируется.
 
-    Подробности:
-    ------------
-    1) Heartbeat без hb_scroll_percent (NULL) полностью исключаются
-       из расчёта активности:
-       - они не участвуют в лаге;
-       - не считаются активностью.
-
-    2) Лаг считается только по heartbeat с hb_scroll_percent IS NOT NULL.
-       Если hb_scroll_percent == prev_scroll → активности нет.
-
-    3) Если вкладка "висит" и скролл не меняется, а heartbeat продолжает
-       приходить, last_real_activity не обновляется, и через INACTIVITY_MINUTES
-       сессия будет считаться закрытой.
+    Это гарантирует:
+    - Мы НЕ создаём summary от heartbeat-флуда после закрытия сессии.
+    - Мы создаём новый визит только если scroll реально изменился.
     """
+
     conn = await get_connection()
     try:
         query = f"""
+        ----------------------------------------------------------------------
+        -- 1. Берём heartbeat со scroll NOT NULL
+        ----------------------------------------------------------------------
         WITH hb_clean AS (
             SELECT
                 session_id,
@@ -72,6 +77,9 @@ async def find_closed_sessions() -> List[str]:
               AND hb_scroll_percent IS NOT NULL
         ),
 
+        ----------------------------------------------------------------------
+        -- 2. Помечаем heartbeat, где scroll изменился
+        ----------------------------------------------------------------------
         hb_marked AS (
             SELECT
                 session_id,
@@ -91,6 +99,9 @@ async def find_closed_sessions() -> List[str]:
             FROM hb_clean
         ),
 
+        ----------------------------------------------------------------------
+        -- 3. Любые не-HEARTBEAT события — 100% активность
+        ----------------------------------------------------------------------
         clicks AS (
             SELECT
                 session_id,
@@ -99,12 +110,15 @@ async def find_closed_sessions() -> List[str]:
             WHERE event_type != 'heartbeat'
         ),
 
+        ----------------------------------------------------------------------
+        -- 4. Объединяем только РЕАЛЬНУЮ активность
+        ----------------------------------------------------------------------
         activity AS (
             SELECT
                 session_id,
                 MAX(event_time) AS last_real_activity
             FROM (
-                -- heartbeat только в моменты ИЗМЕНЕНИЯ скролла
+                -- scroll-change heartbeat
                 SELECT
                     session_id,
                     event_time
@@ -113,7 +127,7 @@ async def find_closed_sessions() -> List[str]:
 
                 UNION ALL
 
-                -- любые не-heartbeat события (клики и т.п.)
+                -- клики, сабмиты, формы
                 SELECT
                     session_id,
                     event_time
@@ -122,22 +136,36 @@ async def find_closed_sessions() -> List[str]:
             GROUP BY session_id
         ),
 
+        ----------------------------------------------------------------------
+        -- 5. Последний summary для session_id
+        ----------------------------------------------------------------------
         summary_bounds AS (
             SELECT
                 raw_session_id,
-                MAX(end_time) AS last_summary_end
+                MAX(end_time) AS last_summary_end,
+                MAX(final_scroll_depth) AS last_final_scroll
             FROM session_summary
             GROUP BY raw_session_id
         )
 
+        ----------------------------------------------------------------------
+        -- 6. Выбираем СЕССИИ, которые требует СУММАРИЗАЦИИ
+        ----------------------------------------------------------------------
         SELECT a.session_id
         FROM activity a
         LEFT JOIN summary_bounds sb
             ON sb.raw_session_id = a.session_id
         WHERE
+            ------------------------------------------------------------------
+            -- Визит ЗАКРЫТ (нет активности 15 минут)
+            ------------------------------------------------------------------
             a.last_real_activity < (NOW() - INTERVAL '{INACTIVITY_MINUTES} minutes')
+
+            ------------------------------------------------------------------
+            -- Активность НЕ покрыта предыдущим Summary
+            ------------------------------------------------------------------
             AND (
-                sb.last_summary_end IS NULL
+                sb.last_summary_end IS NULL         -- нет Summary → первый визит
                 OR a.last_real_activity > sb.last_summary_end
             );
         """

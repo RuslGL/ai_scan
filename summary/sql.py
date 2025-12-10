@@ -5,6 +5,7 @@ SQL-утилиты для summary-сервиса.
 - создание таблицы session_summary,
 - вставку новой summary-записи,
 - получение последнего end_time для raw_session_id,
+- получение последнего end_time + final_scroll_depth для raw_session_id,
 - проверку: покрыт ли данный last_real_activity предыдущими summary,
 - удаление событий (можно отключить для тестов).
 
@@ -16,13 +17,14 @@ SQL-утилиты для summary-сервиса.
    last_real_activity > max(end_time) в session_summary для этого raw_session_id.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from .db import get_connection
 
 
 # ----------------------------------------------------------------------
 #  CREATE TABLE
 # ----------------------------------------------------------------------
+
 
 async def create_session_summary_table():
     """
@@ -61,6 +63,7 @@ async def create_session_summary_table():
 # ----------------------------------------------------------------------
 #  INSERT SUMMARY
 # ----------------------------------------------------------------------
+
 
 async def insert_summary(summary: dict):
     """
@@ -130,6 +133,7 @@ async def insert_summary(summary: dict):
 #  GET LAST SUMMARY END TIME
 # ----------------------------------------------------------------------
 
+
 async def get_last_summary_end_time(raw_session_id: str) -> Optional[str]:
     """
     Возвращает максимальный end_time для указанного raw_session_id.
@@ -160,8 +164,51 @@ async def get_last_summary_end_time(raw_session_id: str) -> Optional[str]:
 
 
 # ----------------------------------------------------------------------
+#  GET LAST SUMMARY INFO (end_time + final_scroll_depth)
+# ----------------------------------------------------------------------
+
+
+async def get_last_summary_info(raw_session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Возвращает информацию о последней summary-записи для raw_session_id:
+
+    - last_end: TIMESTAMPTZ end_time последнего визита;
+    - last_final_scroll: DOUBLE PRECISION final_scroll_depth последнего визита.
+
+    Используется для логики:
+    - определения последней зафиксированной позиции скролла по сессии;
+    - понимания, является ли новый heartbeat со скроллом продолжением
+      старого визита или началом нового.
+    """
+    conn = await get_connection()
+    try:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                end_time AS last_end,
+                final_scroll_depth AS last_final_scroll
+            FROM session_summary
+            WHERE raw_session_id = $1
+            ORDER BY end_time DESC
+            LIMIT 1;
+            """,
+            raw_session_id,
+        )
+        if not row:
+            return None
+
+        return {
+            "last_end": row["last_end"],
+            "last_final_scroll": row["last_final_scroll"],
+        }
+    finally:
+        await conn.close()
+
+
+# ----------------------------------------------------------------------
 #  CHECK IF SUMMARY FOR THIS VISIT ALREADY EXISTS
 # ----------------------------------------------------------------------
+
 
 async def is_visit_already_summarized(raw_session_id: str, last_real_activity) -> bool:
     """
@@ -186,6 +233,7 @@ async def is_visit_already_summarized(raw_session_id: str, last_real_activity) -
 # ----------------------------------------------------------------------
 #  DELETE EVENTS AFTER SUMMARY (можно отключить)
 # ----------------------------------------------------------------------
+
 
 async def delete_events_for_session(session_id: str):
     """
