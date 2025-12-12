@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import asyncpg
-import aiohttp
 from fastapi import APIRouter, Depends, Request
 
 from app.db import get_connection
@@ -12,33 +11,20 @@ from app.db import get_connection
 router = APIRouter()
 
 
-async def geo_from_ip(ip: str | None):
-    if not ip:
-        return None, None
-
-    url = f"http://ip-api.com/json/{ip}?fields=status,country,city"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=2) as resp:
-                data = await resp.json()
-                if data.get("status") == "success":
-                    return data.get("country"), data.get("city")
-    except:
-        pass
-
-    return None, None
-
-
 @router.post("/track")
 async def track_batch(
     request: Request,
     payload: Dict[str, Any],
-    conn: asyncpg.Connection = Depends(get_connection)
+    conn: asyncpg.Connection = Depends(get_connection),
 ):
-    site_url = payload.get("site_url")
+    site_url = payload.get("site")
     uid = payload.get("uid")
-    session_id = payload.get("session_id")
-    events: List[Dict[str, Any]] = payload.get("events", [])
+    session_id = payload.get("sid")
+    user_agent = payload.get("ua")
+    events: List[Dict[str, Any]] = payload.get("ev", [])
+
+    if not site_url or not isinstance(events, list):
+        return {"status": "bad payload"}
 
     client_ip = (
         request.headers.get("x-real-ip")
@@ -46,121 +32,103 @@ async def track_batch(
         or request.client.host
     )
 
-    country, city = await geo_from_ip(client_ip)
+    inserted = 0
+    skipped = 0
 
     for ev in events:
-        event_type = ev.get("event_type")
-        ts = ev.get("ts")
-        data: Dict[str, Any] = ev.get("payload", {})
+        try:
+            if not isinstance(ev, dict):
+                skipped += 1
+                continue
 
-        # timestamp (ms -> datetime)
-        if isinstance(ts, int):
-            event_time = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-        else:
-            event_time = datetime.now(tz=timezone.utc)
+            et = ev.get("et")
+            ts = ev.get("ts")
+            p: Dict[str, Any] = ev.get("p", {})
 
-        # CLICK BUTTON
-        button_text = data.get("text")
-        button_id = data.get("id")
-        button_class = data.get("class_name")
+            if et not in {"hb", "click"}:
+                skipped += 1
+                continue
 
-        # FORM SUBMIT
-        form_id = data.get("form_selector")
-        form_button_text = data.get("button_text")
-        form_structure = data.get("fields")
+            # timestamp
+            if isinstance(ts, int):
+                event_time = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+            else:
+                event_time = datetime.now(tz=timezone.utc)
 
-        # HEARTBEAT / SCROLL
-        hb_scroll_percent = data.get("scroll_percent")
-        hb_max_scroll = data.get("max_scroll_percent")
-        hb_scroll_y = data.get("scroll_y")
-        hb_session_duration_ms = data.get("session_duration_ms")
-        hb_since_last_activity_ms = data.get("since_last_activity_ms")
+            # defaults
+            event_type = None
+            scroll_position_percent = None
+            button_text = None
+            button_id = None
+            button_class = None
 
-        # DEVICE META
-        device = data.get("device", {})
-        device_type = device.get("device_type")
-        os = device.get("os")
-        browser = device.get("browser")
-        viewport_width = device.get("viewport_width")
-        viewport_height = device.get("viewport_height")
-        screen_width = device.get("screen_width")
-        screen_height = device.get("screen_height")
+            # HEARTBEAT → SCROLL
+            if et == "hb":
+                event_type = "scroll"
+                try:
+                    scroll_position_percent = int(p.get("sp"))
+                except (TypeError, ValueError):
+                    scroll_position_percent = None
 
-        await conn.execute(
-            """
-            INSERT INTO events (
+            # CLICK
+            elif et == "click":
+                event_type = "click"
+                button_text = p.get("button_text")
+                button_id = p.get("id")
+                button_class = p.get("cls")
+
+            await conn.execute(
+                """
+                INSERT INTO events (
+                    site_url,
+                    uid,
+                    session_id,
+                    event_type,
+                    event_time,
+                    received_at,
+
+                    scroll_position_percent,
+
+                    button_text,
+                    button_id,
+                    button_class,
+
+                    user_agent,
+                    client_ip
+                )
+                VALUES (
+                    $1,$2,$3,$4,$5,$6,
+                    $7,
+                    $8,$9,$10,
+                    $11,$12
+                )
+                """,
                 site_url,
                 uid,
                 session_id,
                 event_type,
                 event_time,
+                datetime.now(tz=timezone.utc),
+
+                scroll_position_percent,
 
                 button_text,
                 button_id,
                 button_class,
 
-                form_id,
-                form_button_text,
-                form_structure,
-
-                hb_scroll_percent,
-                hb_max_scroll,
-                hb_scroll_y,
-                hb_session_duration_ms,
-                hb_since_last_activity_ms,
-
-                device_type,
-                os,
-                browser,
-                viewport_width,
-                viewport_height,
-                screen_width,
-                screen_height,
-
-                ip_hash,
-                country,
-                city
+                user_agent,
+                client_ip,
             )
-            VALUES (
-                $1,$2,$3,$4,$5,
-                $6,$7,$8,
-                $9,$10,$11,
-                $12,$13,$14,$15,$16,
-                $17,$18,$19,$20,$21,$22,$23,
-                $24,$25,$26
-            )
-            """,
-            site_url,
-            uid,
-            session_id,
-            event_type,
-            event_time,
 
-            button_text,
-            button_id,
-            button_class,
+            inserted += 1
 
-            form_id,
-            form_button_text,
-            form_structure,
+        except Exception:
+            skipped += 1
+            continue
 
-            hb_scroll_percent,
-            hb_max_scroll,
-            hb_scroll_y,
-            hb_session_duration_ms,
-            hb_since_last_activity_ms,
-
-            device_type,
-            os,
-            browser,
-            viewport_width,
-            viewport_height,
-            screen_width,
-            screen_height,
-
-            client_ip,
-            country,
-            city,
-        )
-
-    return {"status": "ok", "received": len(events)}
+    return {
+        "status": "ok",
+        "received": len(events),
+        "inserted": inserted,
+        "skipped": skipped,
+    }
