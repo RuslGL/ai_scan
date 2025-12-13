@@ -1,164 +1,139 @@
-"""
-Модуль агрегатора данных для формирования записи в таблице session_summary.
-
-Новая логика (2025):
---------------------
-Формируем summary ТОЛЬКО по реальной активности:
-- heartbeat со scroll-change;
-- любое событие event_type != heartbeat.
-
-heartbeat:
-- со scroll NULL → игнорируется,
-- без scroll-change → игнорируется,
-они НЕ влияют ни на end_time, ни на final_scroll_depth.
-
-final_scroll_depth = последний scroll среди heartbeat, которые были real-activity.
-end_time = время последнего события, которое было real-activity.
-"""
-
 from datetime import datetime
 from typing import List, Dict, Any
-import json
 
 
-def _first_non_null(events: List[Dict[str, Any]], key: str):
-    """Возвращает первое непустое значение поля key в списке событий."""
-    for e in events:
-        v = e.get(key)
-        if v is not None:
-            return v
-    return None
-
-
-def build_session_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_session_summaries(
+    events: List[Dict[str, Any]],
+    idle_timeout_sec: int = 300,  # 5 минут
+) -> List[Dict[str, Any]]:
     """
-    Формирует структуру summary по событиям визита.
-
-    Ожидается:
-    - события отсортированы по времени ASC;
-    - события не содержат heartbeat со scroll NULL (worker удаляет);
-    - события не содержат heartbeat без scroll-change.
+    Принимает raw events ОДНОЙ session_id,
+    возвращает список summary-визитов.
     """
 
     if not events:
-        raise ValueError("build_session_summary() received empty event list")
+        return []
 
-    # ----------- Базовые поля сессии -----------
-    raw_session_id = events[0]["session_id"]
-    uid = events[0].get("uid")
-    site_url = events[0].get("site_url")
+    summaries: List[Dict[str, Any]] = []
 
-    # start_time = первое ДЕЙСТВИЕ визита
-    times = [e["event_time"] for e in events]
-    start_time: datetime = min(times)
+    # события уже предполагаются отсортированными
+    current_events: List[Dict[str, Any]] = []
+    visit_start_time: datetime | None = None
+    last_event_time: datetime | None = None
 
-    # end_time = последнее ДЕЙСТВИЕ (scroll-change или click)
-    # worker гарантирует, что heartbeat-флуд отсутствует в events
-    end_time: datetime = max(times)
+    def flush_visit(events_chunk: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Собирает summary одного визита"""
+        start_time = events_chunk[0]["event_time"]
+        end_time = events_chunk[-1]["event_time"]
 
-    duration_seconds = (end_time - start_time).total_seconds()
+        duration_seconds = int((end_time - start_time).total_seconds())
 
-    # ----------- Гео + устройство -----------
-    country = _first_non_null(events, "country")
-    city = _first_non_null(events, "city")
-    device_type = _first_non_null(events, "device_type")
-    os_name = _first_non_null(events, "os")
-    browser = _first_non_null(events, "browser")
+        # device meta — берём из первого события
+        first = events_chunk[0]
 
-    # ----------- Scroll (только реальная активность) -----------
-    hb_events = [
-        e for e in events
-        if e["event_type"] == "heartbeat"
-        and e.get("hb_scroll_percent") is not None
-    ]
+        max_scroll = 0
+        final_scroll = 0
+        scroll_events_count = 0
+        click_events_count = 0
 
-    # Мы знаем: worker гарантирует, что здесь только scroll-change heartbeat
-    # → можно просто взять scroll из последнего
-    max_scroll_depth = None
-    final_scroll_depth = None
+        scroll_stops: List[Dict[str, Any]] = []
+        click_buttons: List[Dict[str, Any]] = []
 
-    if hb_events:
-        scroll_values = [float(e["hb_scroll_percent"]) for e in hb_events]
-        max_scroll_depth = max(scroll_values)
-        final_scroll_depth = scroll_values[-1]  # последний real-scroll
+        last_scroll_depth = None
+        last_scroll_time = None
 
-    # ----------- Scroll stops (только для real-scroll heartbeat) -----------
-    scroll_stops = []
-    prev_depth = None
-    for e in hb_events:
-        depth = e.get("hb_scroll_percent")
-        since_ms = e.get("hb_since_last_activity_ms")
+        for e in events_chunk:
+            t_from_start = int((e["event_time"] - start_time).total_seconds() * 1000)
 
-        if depth is None or since_ms is None:
-            prev_depth = depth
+            if e["event_type"] == "scroll":
+                scroll_events_count += 1
+                depth = e.get("scroll_position_percent")
+
+                if depth is None:
+                    continue
+
+                max_scroll = max(max_scroll, depth)
+                final_scroll = depth
+
+                # scroll stop detection
+                if last_scroll_depth is not None and last_scroll_time is not None:
+                    if depth != last_scroll_depth:
+                        stop_ms = int(
+                            (e["event_time"] - last_scroll_time).total_seconds() * 1000
+                        )
+                        if stop_ms > 0:
+                            scroll_stops.append(
+                                {
+                                    "t": int(
+                                        (last_scroll_time - start_time).total_seconds()
+                                        * 1000
+                                    ),
+                                    "depth": last_scroll_depth,
+                                    "stop_ms": stop_ms,
+                                }
+                            )
+
+                last_scroll_depth = depth
+                last_scroll_time = e["event_time"]
+
+            elif e["event_type"] == "click":
+                click_events_count += 1
+                click_buttons.append(
+                    {
+                        "t": t_from_start,
+                        "button": e.get("button_text"),
+                    }
+                )
+
+        return {
+            "site_url": first["site_url"],
+            "uid": first.get("uid"),
+            "session_id": first["session_id"],
+            "visit_start": start_time,
+            "visit_end": end_time,
+            "duration_seconds": duration_seconds,
+            # geo — позже
+            "country": None,
+            "city": None,
+            # device
+            "device_type": first.get("device_type"),
+            "os": first.get("os"),
+            "browser": first.get("browser"),
+            # scroll
+            "max_scroll_depth": max_scroll,
+            "final_scroll_depth": final_scroll,
+            "scroll_stops": scroll_stops,
+            # clicks
+            "click_buttons": click_buttons,
+            # aggregates
+            "total_scroll_events": scroll_events_count,
+            "total_click_events": click_events_count,
+        }
+
+    # основной проход
+    for event in events:
+        event_time = event["event_time"]
+
+        if visit_start_time is None:
+            visit_start_time = event_time
+            last_event_time = event_time
+            current_events.append(event)
             continue
 
-        if since_ms >= 30_000:  # > 30 секунд стоп
-            stop_depth = prev_depth if prev_depth is not None else depth
-            scroll_stops.append(
-                {
-                    "depth": float(stop_depth),
-                    "duration_sec": float(since_ms / 1000),
-                }
-            )
+        gap = (event_time - last_event_time).total_seconds()
 
-        prev_depth = depth
+        if gap > idle_timeout_sec:
+            # закрываем визит
+            summaries.append(flush_visit(current_events))
+            current_events = [event]
+            visit_start_time = event_time
+        else:
+            current_events.append(event)
 
-    # ----------- Clicks -----------
-    action_events = [e for e in events if e["event_type"] != "heartbeat"]
-    total_actions = len(action_events)
+        last_event_time = event_time
 
-    buttons_acc: Dict[tuple, Dict[str, Any]] = {}
+    # финальный визит
+    if current_events:
+        summaries.append(flush_visit(current_events))
 
-    for e in action_events:
-        key = (e["event_type"], e.get("button_text"))
-
-        if key not in buttons_acc:
-            buttons_acc[key] = {
-                "event_type": e["event_type"],
-                "text": e.get("button_text"),
-                "id": e.get("button_id"),
-                "count": 0,
-                "first_at": e["event_time"],
-                "last_at": e["event_time"],
-            }
-
-        btn = buttons_acc[key]
-        btn["count"] += 1
-        if e["event_time"] < btn["first_at"]:
-            btn["first_at"] = e["event_time"]
-        if e["event_time"] > btn["last_at"]:
-            btn["last_at"] = e["event_time"]
-
-    click_buttons = [
-        {
-            "event_type": b["event_type"],
-            "text": b["text"],
-            "id": b["id"],
-            "count": b["count"],
-            "first_at": b["first_at"].isoformat(),
-            "last_at": b["last_at"].isoformat(),
-        }
-        for b in buttons_acc.values()
-    ]
-
-    # ----------- Итоговый объект summary -----------
-    return {
-        "raw_session_id": raw_session_id,
-        "uid": uid,
-        "site_url": site_url,
-        "start_time": start_time,
-        "end_time": end_time,
-        "duration_seconds": duration_seconds,
-        "country": country,
-        "city": city,
-        "device_type": device_type,
-        "os": os_name,
-        "browser": browser,
-        "max_scroll_depth": max_scroll_depth,
-        "final_scroll_depth": final_scroll_depth,
-        "scroll_stops": json.dumps(scroll_stops, ensure_ascii=False),
-        "click_buttons": json.dumps(click_buttons, ensure_ascii=False),
-        "total_actions": total_actions,
-        "is_closed": True,
-    }
+    return summaries

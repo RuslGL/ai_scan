@@ -1,206 +1,127 @@
-"""
-Фоновый воркер для агрегирования событий в таблицу session_summary.
-
-Новая логика (2025):
---------------------
-1. Summary создаётся только когда визит ЗАКРЫТ:
-   - нет активности (scroll-change или кликов) >= 15 минут.
-   - selector гарантирует, что визит закрыт.
-
-2. После закрытия визита:
-   - heartbeat со scroll NULL → удалить.
-   - heartbeat без scroll-change → удалить.
-   - heartbeat со scroll-change → это начало НОВОГО визита (но summary пока не создаём).
-
-3. Worker формирует summary ТОЛЬКО по real-activity:
-   - heartbeat со scroll-change,
-   - клики.
-
-4. Все мусорные heartbeat удаляются.
-"""
-
 import asyncio
-import logging
-import os
-from typing import List, Dict, Any
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 
-from .selector import find_closed_sessions
-from .events_loader import load_events_for_session
-from .aggregator import build_session_summary
-from .sql import (
-    insert_summary,
+import aiohttp
+
+from sql import (
+    get_pending_session_ids,
+    load_events_for_session,
+    insert_session_summary,
     delete_events_for_session,
-    get_last_summary_info,
 )
-
-logger = logging.getLogger(__name__)
-
-LOOP_SLEEP_SECONDS = int(os.getenv("SUMMARY_WORKER_SLEEP_SECONDS", "300"))
+from aggregator import build_session_summaries
 
 
-# -----------------------------------------------------------------------------
-#  Фильтрация REAL-ACTIVITY
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# GEO (внутри worker, отказоустойчиво)
+# ---------------------------------------------------------------------
 
-def _filter_real_activity_events(
-    events: List[Dict[str, Any]],
-    last_final_scroll: float | None
-) -> List[Dict[str, Any]]:
-    """
-    Оставляет только real-activity:
+async def geo_from_ip(ip: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    if not ip:
+        return None, None
 
-    heartbeat:
-      - NULL scroll → удалить
-      - scroll == last_final_scroll → удалить
-      - scroll == предыдущий scroll → удалить
-      - scroll-change → real-activity
+    url = f"http://ip-api.com/json/{ip}?fields=status,country,city"
 
-    Любые клики — real-activity.
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as s:
+            async with s.get(url) as r:
+                data = await r.json()
+                if data.get("status") == "success":
+                    return data.get("country"), data.get("city")
+    except Exception:
+        pass
 
-    Возвращает список событий, пригодных для aggregator.
-    """
-
-    real_events = []
-    prev_scroll = last_final_scroll  # состояние scroll до визита
-
-    for e in events:
-        if e["event_type"] != "heartbeat":
-            real_events.append(e)  # 100% активность
-            continue
-
-        # Heartbeat
-        s = e.get("hb_scroll_percent")
-
-        if s is None:
-            # полностью игнорируем NULL scroll
-            continue
-
-        s = float(s)
-
-        # не изменился scroll → игнорируем
-        if prev_scroll is not None and s == float(prev_scroll):
-            continue
-
-        # scroll-change → активность
-        real_events.append(e)
-        prev_scroll = s
-
-    return real_events
+    return None, None
 
 
-# -----------------------------------------------------------------------------
-#  Основная обработка закрытых визитов
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# USER AGENT (минимальный парсер)
+# ---------------------------------------------------------------------
 
-async def process_closed_sessions() -> None:
-    """
-    Основная логика:
-    1. selector возвращает session_id, где визит закрыт.
-    2. worker загружает события.
-    3. worker удаляет всё, что было до последнего summary.
-    4. worker фильтрует только real-activity.
-    5. Если real-activity нет → всё удалить.
-    6. Если есть → собрать summary и удалить события.
-    """
+def parse_user_agent(ua: Optional[str]) -> Dict[str, Optional[str]]:
+    if not ua:
+        return {"device_type": None, "os": None, "browser": None}
 
-    session_ids: List[str] = await find_closed_sessions()
+    ua_l = ua.lower()
 
-    if not session_ids:
-        logger.debug("summary-worker: нет закрытых сессий для обработки")
+    device_type = "mobile" if any(x in ua_l for x in ["mobile", "android", "iphone"]) else "desktop"
+
+    if "windows" in ua_l:
+        os = "Windows"
+    elif "mac os" in ua_l or "macintosh" in ua_l:
+        os = "macOS"
+    elif "android" in ua_l:
+        os = "Android"
+    elif "iphone" in ua_l or "ipad" in ua_l:
+        os = "iOS"
+    else:
+        os = None
+
+    if "chrome" in ua_l and "safari" in ua_l:
+        browser = "Chrome"
+    elif "safari" in ua_l and "chrome" not in ua_l:
+        browser = "Safari"
+    elif "firefox" in ua_l:
+        browser = "Firefox"
+    else:
+        browser = None
+
+    return {
+        "device_type": device_type,
+        "os": os,
+        "browser": browser,
+    }
+
+
+# ---------------------------------------------------------------------
+# WORKER LOGIC
+# ---------------------------------------------------------------------
+
+async def process_session(session_id: str):
+    events = await load_events_for_session(session_id)
+
+    if not events:
         return
 
-    logger.info("summary-worker: найдено закрытых сессий: %d", len(session_ids))
+    summaries = build_session_summaries(events)
+
+    # данные для enrichment берём из первого события сессии
+    first_event = events[0]
+
+    client_ip = first_event.get("client_ip")
+    user_agent = first_event.get("user_agent")
+
+    country, city = await geo_from_ip(client_ip)
+    ua_info = parse_user_agent(user_agent)
+
+    for summary in summaries:
+        summary["country"] = country
+        summary["city"] = city
+        summary["device_type"] = ua_info["device_type"]
+        summary["os"] = ua_info["os"]
+        summary["browser"] = ua_info["browser"]
+
+        await insert_session_summary(summary)
+
+    # после успешной агрегации — чистим raw
+    await delete_events_for_session(session_id)
+
+
+async def run_worker():
+    session_ids = await get_pending_session_ids()
 
     for session_id in session_ids:
         try:
-            # ------------------------------------------------------------
-            # 1. Загружаем все события сессии
-            # ------------------------------------------------------------
-            events = await load_events_for_session(session_id)
-
-            if not events:
-                logger.warning(
-                    "summary-worker: session_id=%s — нет событий", session_id
-                )
-                continue
-
-            # ------------------------------------------------------------
-            # 2. Получаем summary-info (end_time + final_scroll_depth)
-            # ------------------------------------------------------------
-            summary_info = await get_last_summary_info(session_id)
-            last_end = None
-            last_final_scroll = None
-
-            if summary_info:
-                last_end = summary_info["last_end"]
-                last_final_scroll = summary_info["last_final_scroll"]
-
-            # ------------------------------------------------------------
-            # 3. Удаляем события, которые уже учтены в summary
-            # ------------------------------------------------------------
-            if last_end:
-                events = [e for e in events if e["event_time"] > last_end]
-
-            if not events:
-                continue
-
-            # ------------------------------------------------------------
-            # 4. Фильтруем только real-activity
-            # ------------------------------------------------------------
-            real_events = _filter_real_activity_events(events, last_final_scroll)
-
-            if not real_events:
-                # Мусорные heartbeat (NULL scroll или не изменить scroll)
-                logger.info(
-                    "summary-worker: session_id=%s — нет real-activity, удаление мусора",
-                    session_id
-                )
-                await delete_events_for_session(session_id)
-                continue
-
-            # ------------------------------------------------------------
-            # 5. Selector гарантирует, что визит закрыт → создаём summary
-            # ------------------------------------------------------------
-            summary = build_session_summary(real_events)
-            await insert_summary(summary)
-
-            # ------------------------------------------------------------
-            # 6. Удаляем события визита
-            # ------------------------------------------------------------
-            await delete_events_for_session(session_id)
-
-            logger.info("summary-worker: session_id=%s — summary сохранён", session_id)
-
+            await process_session(session_id)
         except Exception as e:
-            logger.exception(
-                "summary-worker: ошибка при обработке session_id=%s: %s",
-                session_id, e
-            )
+            # здесь позже можно добавить логирование
+            print(f"[worker] error processing session {session_id}: {e}")
 
 
-# -----------------------------------------------------------------------------
-#  Запуск цикла воркера
-# -----------------------------------------------------------------------------
-
-async def run_worker() -> None:
-    logger.info(
-        "summary-worker: старт, интервал=%s сек. (~%s мин.)",
-        LOOP_SLEEP_SECONDS,
-        LOOP_SLEEP_SECONDS // 60,
-    )
-
-    while True:
-        try:
-            await process_closed_sessions()
-        except Exception as e:
-            logger.exception("summary-worker: необработанная ошибка: %s", e)
-
-        await asyncio.sleep(LOOP_SLEEP_SECONDS)
-
+# ---------------------------------------------------------------------
+# ENTRYPOINT
+# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
     asyncio.run(run_worker())
