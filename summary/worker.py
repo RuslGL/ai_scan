@@ -1,14 +1,14 @@
 import asyncio
 from typing import List, Dict, Any
 
-from summary.db import get_connection
-from summary.sql import (
+from db import get_connection
+from sql import (
     get_pending_session_ids,
     load_events_for_session,
     insert_session_summary,
     delete_events_for_session,
 )
-from summary.aggregator import build_session_summaries
+from aggregator import build_session_summaries
 
 
 SLEEP_SECONDS = 30
@@ -39,11 +39,11 @@ async def process_once() -> None:
             if not summaries:
                 continue
 
-            # 1. INSERT summaries
+            # сначала INSERT summaries
             for summary in summaries:
                 await insert_session_summary(conn, summary)
 
-            # 2. DELETE raw events ONLY AFTER successful insert
+            # ТОЛЬКО ПОСЛЕ успешного insert — удаляем raw events
             await delete_events_for_session(conn, session_id)
 
     finally:
