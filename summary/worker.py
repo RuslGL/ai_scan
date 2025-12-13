@@ -1,127 +1,67 @@
 import asyncio
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import timezone
+from typing import List, Dict, Any
 
-import aiohttp
-
-from sql import (
+from .db import get_connection
+from .sql import (
     get_pending_session_ids,
     load_events_for_session,
     insert_session_summary,
     delete_events_for_session,
 )
-from aggregator import build_session_summaries
+from .aggregator import build_session_summaries
 
 
-# ---------------------------------------------------------------------
-# GEO (внутри worker, отказоустойчиво)
-# ---------------------------------------------------------------------
+SLEEP_SECONDS = 30          # как часто запускаться
+IDLE_TIMEOUT_SEC = 300      # 5 минут — разрыв визита
 
-async def geo_from_ip(ip: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    if not ip:
-        return None, None
 
-    url = f"http://ip-api.com/json/{ip}?fields=status,country,city"
-
+async def process_once() -> None:
+    conn = await get_connection()
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as s:
-            async with s.get(url) as r:
-                data = await r.json()
-                if data.get("status") == "success":
-                    return data.get("country"), data.get("city")
-    except Exception:
-        pass
+        session_ids = await get_pending_session_ids(conn)
 
-    return None, None
+        if not session_ids:
+            return
 
+        for session_id in session_ids:
+            events: List[Dict[str, Any]] = await load_events_for_session(
+                conn, session_id
+            )
 
-# ---------------------------------------------------------------------
-# USER AGENT (минимальный парсер)
-# ---------------------------------------------------------------------
+            if not events:
+                continue
 
-def parse_user_agent(ua: Optional[str]) -> Dict[str, Optional[str]]:
-    if not ua:
-        return {"device_type": None, "os": None, "browser": None}
+            summaries = build_session_summaries(
+                events,
+                idle_timeout_sec=IDLE_TIMEOUT_SEC,
+            )
 
-    ua_l = ua.lower()
+            if not summaries:
+                continue
 
-    device_type = "mobile" if any(x in ua_l for x in ["mobile", "android", "iphone"]) else "desktop"
+            # IMPORTANT:
+            # сначала пишем summaries
+            for summary in summaries:
+                await insert_session_summary(conn, summary)
 
-    if "windows" in ua_l:
-        os = "Windows"
-    elif "mac os" in ua_l or "macintosh" in ua_l:
-        os = "macOS"
-    elif "android" in ua_l:
-        os = "Android"
-    elif "iphone" in ua_l or "ipad" in ua_l:
-        os = "iOS"
-    else:
-        os = None
+            # и ТОЛЬКО ПОСЛЕ УСПЕШНОГО INSERT — чистим raw events
+            await delete_events_for_session(conn, session_id)
 
-    if "chrome" in ua_l and "safari" in ua_l:
-        browser = "Chrome"
-    elif "safari" in ua_l and "chrome" not in ua_l:
-        browser = "Safari"
-    elif "firefox" in ua_l:
-        browser = "Firefox"
-    else:
-        browser = None
-
-    return {
-        "device_type": device_type,
-        "os": os,
-        "browser": browser,
-    }
+    finally:
+        await conn.close()
 
 
-# ---------------------------------------------------------------------
-# WORKER LOGIC
-# ---------------------------------------------------------------------
-
-async def process_session(session_id: str):
-    events = await load_events_for_session(session_id)
-
-    if not events:
-        return
-
-    summaries = build_session_summaries(events)
-
-    # данные для enrichment берём из первого события сессии
-    first_event = events[0]
-
-    client_ip = first_event.get("client_ip")
-    user_agent = first_event.get("user_agent")
-
-    country, city = await geo_from_ip(client_ip)
-    ua_info = parse_user_agent(user_agent)
-
-    for summary in summaries:
-        summary["country"] = country
-        summary["city"] = city
-        summary["device_type"] = ua_info["device_type"]
-        summary["os"] = ua_info["os"]
-        summary["browser"] = ua_info["browser"]
-
-        await insert_session_summary(summary)
-
-    # после успешной агрегации — чистим raw
-    await delete_events_for_session(session_id)
-
-
-async def run_worker():
-    session_ids = await get_pending_session_ids()
-
-    for session_id in session_ids:
+async def main() -> None:
+    while True:
         try:
-            await process_session(session_id)
+            await process_once()
         except Exception as e:
-            # здесь позже можно добавить логирование
-            print(f"[worker] error processing session {session_id}: {e}")
+            # воркер не должен падать
+            print("[SUMMARY WORKER ERROR]", repr(e))
 
+        await asyncio.sleep(SLEEP_SECONDS)
 
-# ---------------------------------------------------------------------
-# ENTRYPOINT
-# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    asyncio.run(run_worker())
+    asyncio.run(main())
