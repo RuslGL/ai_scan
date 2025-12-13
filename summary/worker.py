@@ -1,19 +1,18 @@
 import asyncio
-from datetime import timezone
 from typing import List, Dict, Any
 
-from .db import get_connection
-from .sql import (
+from summary.db import get_connection
+from summary.sql import (
     get_pending_session_ids,
     load_events_for_session,
     insert_session_summary,
     delete_events_for_session,
 )
-from .aggregator import build_session_summaries
+from summary.aggregator import build_session_summaries
 
 
-SLEEP_SECONDS = 30          # как часто запускаться
-IDLE_TIMEOUT_SEC = 300      # 5 минут — разрыв визита
+SLEEP_SECONDS = 30
+IDLE_TIMEOUT_SEC = 300
 
 
 async def process_once() -> None:
@@ -40,12 +39,11 @@ async def process_once() -> None:
             if not summaries:
                 continue
 
-            # IMPORTANT:
-            # сначала пишем summaries
+            # 1. INSERT summaries
             for summary in summaries:
                 await insert_session_summary(conn, summary)
 
-            # и ТОЛЬКО ПОСЛЕ УСПЕШНОГО INSERT — чистим raw events
+            # 2. DELETE raw events ONLY AFTER successful insert
             await delete_events_for_session(conn, session_id)
 
     finally:
@@ -57,7 +55,6 @@ async def main() -> None:
         try:
             await process_once()
         except Exception as e:
-            # воркер не должен падать
             print("[SUMMARY WORKER ERROR]", repr(e))
 
         await asyncio.sleep(SLEEP_SECONDS)
