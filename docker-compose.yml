@@ -21,27 +21,11 @@ services:
       - "-c"
       - "timezone=UTC"
     ports:
-      - "${POSTGRES_PORT}:5432"     # ← снова доступен снаружи
+      - "${POSTGRES_PORT}:5432"
     networks:
       - internal
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  # --------------------------------------------------------------------
-  # MIGRATION (по желанию, отключено)
-  # --------------------------------------------------------------------
-  # migrate_summary:
-  #   build: .
-  #   container_name: ai_scan_summary_migration
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     - postgres
-  #   command: >
-  #     sh -c "python -m summary.sql"
-  #   restart: "no"
-  #   networks:
-  #     - internal
 
   # --------------------------------------------------------------------
   # FASTAPI backend
@@ -54,11 +38,10 @@ services:
       - .env
     depends_on:
       - postgres
-      # - migrate_summary
     networks:
       - internal
     ports:
-      - "8000:8000"                  # API доступен наружу
+      - "8000:8000"
     command: >
       sh -c "python db/create_tables.py &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -74,11 +57,10 @@ services:
       - .env
     depends_on:
       - postgres
-      # - migrate_summary
     networks:
       - internal
     command: >
-      sh -c "python -m summary.worker"
+      sh -c "python summary/worker.py"
 
 # --------------------------------------------------------------------
 # СЕТИ: внутренняя сеть между контейнерами

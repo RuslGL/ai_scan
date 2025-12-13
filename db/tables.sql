@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS events (
     --------------------------------------------------------
     -- SCROLL EVENT
     --------------------------------------------------------
-    scroll_position_percent INT,              -- текущее положение скролла
+    scroll_position_percent INT,
 
     --------------------------------------------------------
     -- CLICK EVENT
@@ -98,14 +98,61 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 ------------------------------------------------------------
--- SESSIONS (отдельная аналитическая таблица)
+--              SESSION_SUMMARY (AGGREGATED VISITS)
 ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE IF NOT EXISTS session_summary (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    site_id UUID REFERENCES sites(id),
-    url_start TEXT,
-    user_agent TEXT,
-    ip_hash TEXT,
-    started_at TIMESTAMPTZ DEFAULT NOW(),
-    ended_at TIMESTAMPTZ
+
+    --------------------------------------------------------
+    -- IDENTIFIERS
+    --------------------------------------------------------
+    site_url TEXT NOT NULL,
+    uid TEXT,
+    session_id TEXT NOT NULL,     -- session id из SDK (одна строка = один визит)
+
+    --------------------------------------------------------
+    -- VISIT TIME
+    --------------------------------------------------------
+    visit_start TIMESTAMPTZ NOT NULL,
+    visit_end TIMESTAMPTZ NOT NULL,
+    duration_seconds INT NOT NULL,
+
+    --------------------------------------------------------
+    -- GEO (by IP)
+    --------------------------------------------------------
+    country TEXT,
+    city TEXT,
+
+    --------------------------------------------------------
+    -- DEVICE (parsed user-agent)
+    --------------------------------------------------------
+    device_type TEXT,             -- mobile / desktop
+    os TEXT,
+    browser TEXT,
+
+    --------------------------------------------------------
+    -- SCROLL SUMMARY
+    --------------------------------------------------------
+    max_scroll_depth INT,
+    final_scroll_depth INT,
+
+    -- [{ t: ms_from_start, depth: %, stop_ms: ms }]
+    scroll_stops JSONB,
+
+    --------------------------------------------------------
+    -- CLICKS SUMMARY
+    --------------------------------------------------------
+    -- [{ t: ms_from_start, button: text }]
+    click_buttons JSONB,
+
+    --------------------------------------------------------
+    -- AGGREGATES
+    --------------------------------------------------------
+    total_scroll_events INT,
+    total_click_events INT,
+
+    --------------------------------------------------------
+    -- META
+    --------------------------------------------------------
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
