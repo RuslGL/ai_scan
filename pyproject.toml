@@ -10,6 +10,8 @@ dependencies = [
     "dotenv>=0.9.9",
     "email-validator>=2.3.0",
     "fastapi>=0.121.2",
+    "geoip2>=5.2.0",
     "pydantic>=2.12.4",
+    "ua-parser>=1.0.1",
     "uvicorn>=0.38.0",
 ]
