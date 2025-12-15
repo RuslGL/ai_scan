@@ -23,9 +23,13 @@ def parse_user_agent(ua: str) -> tuple[str | None, str | None, str | None]:
     br_major = parsed["user_agent"].get("major")
     browser = f"{br_family} {br_major}" if br_major else br_family
 
-    # Device
-    device_family = parsed["device"]["family"]
-    device_type = "mobile" if device_family and device_family != "Other" else "desktop"
+    # Device  ✅ ИСПРАВЛЕНО ТОЛЬКО ЗДЕСЬ
+    ua_l = ua.lower()
+    device_type = (
+        "mobile"
+        if any(x in ua_l for x in ("mobile", "iphone", "android", "ipad"))
+        else "desktop"
+    )
 
     return device_type, os_name, browser
 
