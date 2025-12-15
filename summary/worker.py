@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 from summary.sql import (
     get_pending_session_ids,
@@ -20,10 +21,20 @@ async def process_once() -> None:
     if not session_ids:
         return
 
+    now = datetime.now(tz=timezone.utc)
+
     for session_id in session_ids:
         events: List[Dict[str, Any]] = await load_events_for_session(session_id)
 
         if not events:
+            continue
+
+        # события отсортированы по event_time ASC
+        last_event_time = events[-1]["event_time"]
+        idle_seconds = (now - last_event_time).total_seconds()
+
+        # 🔴 КЛЮЧЕВОЕ УСЛОВИЕ: сессия ещё активна
+        if idle_seconds < IDLE_TIMEOUT_SEC:
             continue
 
         summaries = build_session_summaries(
