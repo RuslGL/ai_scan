@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from datetime import datetime
+import json
 
 from .db import get_connection
 
@@ -90,8 +90,8 @@ async def insert_session_summary(summary: Dict[str, Any]) -> None:
             summary.get("browser"),
             summary.get("max_scroll_depth"),
             summary.get("final_scroll_depth"),
-            summary.get("scroll_stops"),
-            summary.get("click_buttons"),
+            json.dumps(summary.get("scroll_stops")),
+            json.dumps(summary.get("click_buttons")),
             summary.get("total_scroll_events", 0),
             summary.get("total_click_events", 0),
         )
