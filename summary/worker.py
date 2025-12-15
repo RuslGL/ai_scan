@@ -1,7 +1,6 @@
 import asyncio
 from typing import List, Dict, Any
 
-from summary.db import get_connection
 from summary.sql import (
     get_pending_session_ids,
     load_events_for_session,
@@ -16,38 +15,31 @@ IDLE_TIMEOUT_SEC = 300
 
 
 async def process_once() -> None:
-    conn = await get_connection()
-    try:
-        session_ids = await get_pending_session_ids(conn)
+    session_ids = await get_pending_session_ids()
 
-        if not session_ids:
-            return
+    if not session_ids:
+        return
 
-        for session_id in session_ids:
-            events: List[Dict[str, Any]] = await load_events_for_session(
-                conn, session_id
-            )
+    for session_id in session_ids:
+        events: List[Dict[str, Any]] = await load_events_for_session(session_id)
 
-            if not events:
-                continue
+        if not events:
+            continue
 
-            summaries = build_session_summaries(
-                events,
-                idle_timeout_sec=IDLE_TIMEOUT_SEC,
-            )
+        summaries = build_session_summaries(
+            events,
+            idle_timeout_sec=IDLE_TIMEOUT_SEC,
+        )
 
-            if not summaries:
-                continue
+        if not summaries:
+            continue
 
-            # сначала INSERT summaries
-            for summary in summaries:
-                await insert_session_summary(conn, summary)
+        # сначала INSERT summaries
+        for summary in summaries:
+            await insert_session_summary(summary)
 
-            # ТОЛЬКО ПОСЛЕ успешного insert — удаляем raw events
-            await delete_events_for_session(conn, session_id)
-
-    finally:
-        await conn.close()
+        # ТОЛЬКО ПОСЛЕ успешного insert — удаляем raw events
+        await delete_events_for_session(session_id)
 
 
 async def main() -> None:
