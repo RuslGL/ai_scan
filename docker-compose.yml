@@ -58,7 +58,8 @@ services:
     networks:
       - internal
     command: >
-      sh -c "python summary/worker.py"
+      sh -c "python -m summary.worker"
+
 
 # --------------------------------------------------------------------
 # NETWORKS

@@ -1,14 +1,14 @@
 import asyncio
 from typing import List, Dict, Any
 
-from .db import get_connection
-from .sql import (
+from summary.db import get_connection
+from summary.sql import (
     get_pending_session_ids,
     load_events_for_session,
     insert_session_summary,
     delete_events_for_session,
 )
-from .aggregator import build_session_summaries
+from summary.aggregator import build_session_summaries
 
 
 SLEEP_SECONDS = 30
