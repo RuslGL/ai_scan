@@ -1,92 +1,90 @@
-"""
-Скрипт для создания всех необходимых таблиц в PostgreSQL.
-
-Особенности:
-- читает SQL из db/tables.sql,
-- выполняет CREATE TABLE IF NOT EXISTS,
-- существующие таблицы НЕ изменяются и НЕ удаляются.
-
-Запуск:
-    uv run python db/create_tables.py
-"""
-
 from __future__ import annotations
 
 import os
 import asyncio
-from typing import Optional
+from pathlib import Path
 
 import asyncpg
 from asyncpg import Connection
 from dotenv import load_dotenv
-from pathlib import Path
 
-# Загружаем .env
+# ---------------------------------------------------------------------
+# ENV
+# ---------------------------------------------------------------------
+
 load_dotenv()
 
-# Аннотированные переменные окружения
 DB_USER: str = os.getenv("POSTGRES_USER", "admin")
 DB_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "adminpass")
 DB_NAME: str = os.getenv("POSTGRES_DB", "ai_scan_db")
 DB_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
 DB_PORT: str = os.getenv("POSTGRES_PORT", "5432")
 
-# Путь к SQL-файлу
-TABLES_SQL_PATH: Path = Path(__file__).parent / "tables.sql"
+# ---------------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).parent
+TABLES_SQL_PATH: Path = BASE_DIR / "tables.sql"
+VIEWS_SQL_PATH: Path = BASE_DIR / "views.sql"
+
+# ---------------------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------------------
 
 
-async def load_sql() -> str:
-    """
-    Загружает SQL-скрипт из файла tables.sql.
-
-    Returns:
-        str: содержимое SQL-файла.
-    """
-    return TABLES_SQL_PATH.read_text(encoding="utf-8")
+async def load_sql(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
 async def connect_db() -> Connection:
-    """
-    Устанавливает соединение с PostgreSQL.
-
-    Returns:
-        Connection: объект asyncpg.Connection.
-    """
-    conn: Connection = await asyncpg.connect(
+    return await asyncpg.connect(
         user=DB_USER,
         password=DB_PASSWORD,
         database=DB_NAME,
         host=DB_HOST,
         port=DB_PORT,
     )
-    return conn
+
+# ---------------------------------------------------------------------
+# MAIN LOGIC
+# ---------------------------------------------------------------------
 
 
 async def create_tables() -> None:
-    """
-    Выполняет SQL-скрипт создания таблиц.
-    CREATE TABLE IF NOT EXISTS предотвращает дублирование.
-    """
-    print(f"[INFO] Подключение к PostgreSQL: {DB_HOST}:{DB_PORT}, DB={DB_NAME}")
+    print(f"[INFO] Connecting to PostgreSQL {DB_HOST}:{DB_PORT} db={DB_NAME}")
 
     conn: Connection = await connect_db()
 
     try:
-        sql: str = await load_sql()
-        print(f"[INFO] Загружен SQL-файл: {TABLES_SQL_PATH}")
+        # ---------------- TABLES ----------------
+        if not TABLES_SQL_PATH.exists():
+            raise RuntimeError("tables.sql not found")
 
-        await conn.execute(sql)
-        print("[INFO] Таблицы созданы (или уже существовали).")
+        tables_sql = await load_sql(TABLES_SQL_PATH)
+        print(f"[INFO] Executing {TABLES_SQL_PATH}")
+        await conn.execute(tables_sql)
+        print("[INFO] Tables created (or already exist)")
+
+        # ---------------- VIEWS ----------------
+        if VIEWS_SQL_PATH.exists():
+            views_sql = await load_sql(VIEWS_SQL_PATH)
+            print(f"[INFO] Executing {VIEWS_SQL_PATH}")
+            await conn.execute(views_sql)
+            print("[INFO] Views created / replaced")
+        else:
+            print("[INFO] views.sql not found — skipped")
 
     finally:
         await conn.close()
-        print("[INFO] Соединение закрыто.")
+        print("[INFO] DB connection closed")
+
+# ---------------------------------------------------------------------
+# ENTRYPOINT
+# ---------------------------------------------------------------------
 
 
 async def main() -> None:
-    """
-    Точка входа для асинхронного скрипта.
-    """
     await create_tables()
 
 
