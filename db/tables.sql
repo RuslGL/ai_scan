@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS user_plans (
 CREATE TABLE IF NOT EXISTS sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
-    site_url TEXT NOT NULL,
+    site_url TEXT NOT NULL UNIQUE,
     api_key TEXT,
     category TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),

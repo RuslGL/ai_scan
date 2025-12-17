@@ -60,6 +60,17 @@ services:
     command: >
       sh -c "python -m summary.worker"
 
+  # --------------------------------------------------------------------
+  # APPSMITH (DASHBOARDS UI)
+  # --------------------------------------------------------------------
+  appsmith:
+    image: appsmith/appsmith-ce:1.27.0
+    container_name: ai_scan_appsmith
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - appsmith_data:/appsmith-stacks
 
 # --------------------------------------------------------------------
 # NETWORKS
@@ -73,3 +84,4 @@ networks:
 # --------------------------------------------------------------------
 volumes:
   postgres_data:
+  appsmith_data:
