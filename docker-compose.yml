@@ -64,7 +64,7 @@ services:
   # APPSMITH (DASHBOARDS UI)
   # --------------------------------------------------------------------
   appsmith:
-    image: appsmith/appsmith-ce:1.27.0
+    image: appsmith/appsmith-ce:v1.27
     container_name: ai_scan_appsmith
     restart: unless-stopped
     ports:
