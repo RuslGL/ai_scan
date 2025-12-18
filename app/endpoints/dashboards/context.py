@@ -15,35 +15,30 @@ async def get_dashboard_context(
     role = dashboard_token["role"]
     user_id = dashboard_token["user_id"]
 
+    # ADMIN: полный доступ
     if role == "admin":
-        rows = await conn.fetch(
-            """
-            SELECT id, site_url, user_id
-            FROM sites
-            WHERE is_active = TRUE
-            ORDER BY created_at DESC
-            """
-        )
-    else:
-        rows = await conn.fetch(
-            """
-            SELECT id, site_url, user_id
-            FROM sites
-            WHERE user_id = $1
-              AND is_active = TRUE
-            ORDER BY created_at DESC
-            """,
-            user_id,
-        )
+        return {
+            "role": "admin",
+            "sites": "*",
+            "default_site": None,
+        }
+
+    # USER: сайты строго по user_id
+    rows = await conn.fetch(
+        """
+        SELECT site_url
+        FROM sites
+        WHERE user_id = $1
+          AND is_active = TRUE
+        ORDER BY created_at ASC
+        """,
+        user_id,
+    )
+
+    sites = [row["site_url"] for row in rows]
 
     return {
-        "role": role,
-        "sites": [
-            {
-                "id": row["id"],
-                "site_url": row["site_url"],
-                "user_id": row["user_id"],
-            }
-            for row in rows
-        ],
+        "role": "user",
+        "sites": sites,
+        "default_site": sites[0] if sites else None,
     }
