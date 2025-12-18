@@ -63,14 +63,14 @@ services:
   # --------------------------------------------------------------------
   # APPSMITH (DASHBOARDS UI)
   # --------------------------------------------------------------------
-  appsmith:
-    image: appsmith/appsmith-ce:v1.27
-    container_name: ai_scan_appsmith
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    volumes:
-      - appsmith_data:/appsmith-stacks
+#  appsmith:
+#    image: appsmith/appsmith-ce:v1.27
+#    container_name: ai_scan_appsmith
+#    restart: unless-stopped
+#    ports:
+#      - "8080:80"
+#    volumes:
+#      - appsmith_data:/appsmith-stacks
 
 # --------------------------------------------------------------------
 # NETWORKS
@@ -84,4 +84,4 @@ networks:
 # --------------------------------------------------------------------
 volumes:
   postgres_data:
-  appsmith_data:
+#  appsmith_data:
