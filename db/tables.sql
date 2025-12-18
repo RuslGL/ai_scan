@@ -156,3 +156,30 @@ CREATE TABLE IF NOT EXISTS session_summary (
     --------------------------------------------------------
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+
+------------------------------------------------------------
+--              DASHBOARD TOKENS (APP SMITH ACCESS)
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dashboard_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    token TEXT NOT NULL UNIQUE,
+
+    -- OWNER
+    user_id UUID REFERENCES users(id),
+
+    -- ACCESS SCOPE
+    role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+    site_url TEXT,                      -- NULL = доступ ко всем сайтам
+
+    -- LIFECYCLE
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at TIMESTAMPTZ,
+
+    -- ROTATION
+    rotated_from UUID REFERENCES dashboard_tokens(id),
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
