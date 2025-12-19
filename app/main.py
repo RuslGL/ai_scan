@@ -10,7 +10,8 @@ from contextlib import asynccontextmanager
 
 from app.endpoints.register import router as register_router
 from app.endpoints.track import router as track_router
-from app.endpoints.dashboards.context import router as dashboards_router  # ← ДОБАВЛЕНО
+from app.endpoints.dashboards.context import router as dashboards_router
+from app.endpoints.dashboards.metrics import router as dashboards_metrics_router  # ← ДОБАВЛЕНО
 
 from app.db import refresh_active_sites
 
@@ -22,7 +23,7 @@ from app.db import refresh_active_sites
 async def lifespan(app: FastAPI):
     # Загружаем активные сайты (кэш)
     await refresh_active_sites()
-    yield  # ← передаём управление FastAPI
+    yield
     # На shutdown нет действий
 
 
@@ -40,7 +41,7 @@ app: FastAPI = FastAPI(
 # ------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # временно, можно ограничить доменами
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,8 +49,7 @@ app.add_middleware(
 
 
 # ------------------------------------------------------
-# Безопасная заглушка GET /track  (очень важно!)
-# Чтобы браузеры НЕ воспринимали домен как вредоносный.
+# Безопасная заглушка GET /track
 # ------------------------------------------------------
 @app.get("/track")
 async def track_get_stub():
@@ -65,3 +65,4 @@ async def track_get_stub():
 app.include_router(register_router)
 app.include_router(track_router)
 app.include_router(dashboards_router)
+app.include_router(dashboards_metrics_router)
