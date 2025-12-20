@@ -18,48 +18,60 @@ type Props = {
   days: 7 | 30;
 };
 
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+}) {
+  if (!active || !payload || !payload.length) return null;
+
+  return (
+    <div
+      style={{
+        background: "#020617",
+        border: "1px solid #1f2937",
+        borderRadius: "10px",
+        padding: "10px 12px",
+        color: "#e5e7eb",
+        fontSize: "13px",
+      }}
+    >
+      <div style={{ color: "#9ca3af", marginBottom: 4 }}>
+        {label?.slice(8, 10)}.{label?.slice(5, 7)}
+      </div>
+      <div style={{ fontWeight: 600 }}>
+        {payload[0].value} визитов
+      </div>
+    </div>
+  );
+}
+
 export default function VisitsOverTime({ token, days }: Props) {
   const [data, setData] = useState<Point[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
-
-    setLoading(true);
-    setError(null);
+    setError(false);
 
     fetch(
-      `http://localhost:8000/dashboards/metrics/visits` +
-        `?token=${token}` +
-        `&bucket=day`
+      `http://localhost:8000/dashboards/metrics/visits?token=${token}&bucket=day`
     )
       .then((r) => {
-        if (!r.ok) throw new Error("request failed");
+        if (!r.ok) throw new Error();
         return r.json();
       })
       .then((json: Point[]) => {
-        // берём последние N дней
         setData(json.slice(-days));
       })
-      .catch(() => {
-        setError("Ошибка загрузки графика");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      .catch(() => setError(true));
   }, [token, days]);
 
-  if (loading) {
-    return <div className="chart-loading">Загрузка…</div>;
-  }
-
   if (error) {
-    return <div className="error">{error}</div>;
-  }
-
-  if (!data.length) {
-    return <div className="chart-empty">Нет данных</div>;
+    return <div className="error">Ошибка загрузки графика</div>;
   }
 
   return (
@@ -75,12 +87,7 @@ export default function VisitsOverTime({ token, days }: Props) {
             }
           />
           <YAxis allowDecimals={false} />
-          <Tooltip
-            formatter={(v: number) => [`${v}`, "Визитов"]}
-            labelFormatter={(l: string) =>
-              l.slice(8, 10) + "." + l.slice(5, 7)
-            }
-          />
+          <Tooltip content={<CustomTooltip />} />
           <Line
             type="monotone"
             dataKey="value"
