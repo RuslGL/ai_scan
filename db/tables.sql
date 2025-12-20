@@ -67,33 +67,25 @@ CREATE TABLE IF NOT EXISTS events (
     site_url TEXT NOT NULL,
     uid TEXT,
     session_id TEXT,
-    event_type TEXT NOT NULL,                 -- 'scroll', 'click'
-    event_time TIMESTAMPTZ NOT NULL,          -- client timestamp
-    received_at TIMESTAMPTZ DEFAULT NOW(),    -- server timestamp
+    event_type TEXT NOT NULL,
+    event_time TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ DEFAULT NOW(),
 
-    --------------------------------------------------------
-    -- SCROLL EVENT
-    --------------------------------------------------------
+    -- SCROLL
     scroll_position_percent INT,
 
-    --------------------------------------------------------
-    -- CLICK EVENT
-    --------------------------------------------------------
+    -- CLICK
     button_text TEXT,
     button_id TEXT,
     button_class TEXT,
 
-    --------------------------------------------------------
     -- DEVICE META
-    --------------------------------------------------------
     device_type TEXT,
     os TEXT,
     browser TEXT,
     user_agent TEXT,
 
-    --------------------------------------------------------
     -- NETWORK
-    --------------------------------------------------------
     client_ip INET
 );
 
@@ -103,75 +95,58 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS session_summary (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    --------------------------------------------------------
     -- IDENTIFIERS
-    --------------------------------------------------------
     site_url TEXT NOT NULL,
     uid TEXT,
-    session_id TEXT NOT NULL,     -- session id из SDK (одна строка = один визит)
+    session_id TEXT NOT NULL,
 
-    --------------------------------------------------------
     -- VISIT TIME
-    --------------------------------------------------------
     visit_start TIMESTAMPTZ NOT NULL,
     visit_end TIMESTAMPTZ NOT NULL,
     duration_seconds INT NOT NULL,
 
-    --------------------------------------------------------
-    -- GEO (by IP)
-    --------------------------------------------------------
+    -- GEO
     country TEXT,
     city TEXT,
 
-    --------------------------------------------------------
-    -- DEVICE (parsed user-agent)
-    --------------------------------------------------------
-    device_type TEXT,             -- mobile / desktop
+    -- DEVICE
+    device_type TEXT,
     os TEXT,
     browser TEXT,
 
-    --------------------------------------------------------
     -- SCROLL SUMMARY
-    --------------------------------------------------------
     max_scroll_depth INT,
     final_scroll_depth INT,
-
-    -- [{ t: ms_from_start, depth: %, stop_ms: ms }]
     scroll_stops JSONB,
 
-    --------------------------------------------------------
     -- CLICKS SUMMARY
-    --------------------------------------------------------
-    -- [{ t: ms_from_start, button: text }]
     click_buttons JSONB,
 
-    --------------------------------------------------------
     -- AGGREGATES
-    --------------------------------------------------------
     total_scroll_events INT,
     total_click_events INT,
 
-    --------------------------------------------------------
     -- META
-    --------------------------------------------------------
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-
 ------------------------------------------------------------
---              DASHBOARD TOKENS (APP SMITH ACCESS)
+--              DASHBOARD TOKENS (ONE TOKEN = ONE SITE)
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dashboard_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
+    -- TOKEN
     token TEXT NOT NULL UNIQUE,
 
     -- OWNER
     user_id UUID REFERENCES users(id),
 
-    -- ACCESS SCOPE
+    -- ACCESS LEVEL (not scope)
     role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
-    site_url TEXT,                      -- NULL = доступ ко всем сайтам
+
+    -- HARD SITE BINDING
+    site_url TEXT NOT NULL REFERENCES sites(site_url) ON DELETE CASCADE,
 
     -- LIFECYCLE
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -183,3 +158,6 @@ CREATE TABLE IF NOT EXISTS dashboard_tokens (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- INDEXES
+CREATE INDEX IF NOT EXISTS idx_dashboard_tokens_site_url
+ON dashboard_tokens(site_url);

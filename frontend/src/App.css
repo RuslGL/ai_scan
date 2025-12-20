@@ -1,42 +1,176 @@
-#root {
-  max-width: 1280px;
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(
+    circle at top,
+    #1f2937 0%,
+    #020617 70%
+  );
+  font-family: Inter, system-ui, sans-serif;
+  color: #e5e7eb;
+}
+
+/* =====================
+   TOP BAR
+===================== */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(2, 6, 23, 0.95);
+  padding: 16px 24px 12px;
+}
+
+/* =====================
+   MAIN MENU (sections)
+===================== */
+
+.menu {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.menu button {
+  flex: 1;
+
+  /* ✅ ВАЖНО: увеличили внутренние отступы */
+  padding: 14px 18px;
+
+  background: #020617;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu button.active {
+  background: linear-gradient(
+    90deg,
+    #c026d3,
+    #4f46e5,
+    #06b6d4
+  );
+  color: #fff;
+}
+
+/* =====================
+   TIME RANGE SWITCHER
+===================== */
+
+.time-range {
+  display: flex;
+  gap: 12px;
+}
+
+.time-range button {
+  flex: 1;
+
+  /* ✅ тоже добавили комфортный padding */
+  padding: 10px 18px;
+
+  background: #020617;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+}
+
+.time-range button.active {
+  background: #4f46e5;
+  color: #fff;
+}
+
+/* =====================
+   PAGE
+===================== */
+
+.page {
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 32px 24px 96px;
+}
+
+/* =====================
+   TITLES
+===================== */
+
+.site-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 24px 0 48px;
+}
+
+/* =====================
+   SECTIONS
+===================== */
+
+.section {
+  margin-bottom: 64px;
+  padding: 32px;
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid #1f2937;
+  border-radius: 20px;
+
+  scroll-margin-top: 120px;
+}
+
+.section h2 {
+  margin-bottom: 16px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* =====================
+   CHART BLOCK
+===================== */
+
+.chart-block {
+  width: 100%;
+}
+
+.chart-header {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #e5e7eb;
+}
+
+/* =====================
+   PLACEHOLDER
+===================== */
+
+.placeholder {
+  height: 220px;
+  border: 1px dashed #1f2937;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+/* =====================
+   ERROR
+===================== */
+
+.error {
+  color: #f87171;
+  font-weight: 500;
   text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+  margin-top: 16px;
 }

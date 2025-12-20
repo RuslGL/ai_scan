@@ -1,117 +1,97 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import VisitsOverTime from "./components/VisitsOverTime";
+import "./App.css";
 
-type DashboardContext =
-  | {
-      role: "admin";
-      sites: "*";
-      default_site: null;
-    }
-  | {
-      role: "user";
-      sites: string[];
-      default_site: string | null;
-    };
-
-type VisitPoint = {
-  date: string;
-  value: number;
-};
+type Section = "overview" | "scroll" | "clicks" | "audience";
+type TimeRange = "7days" | "30days";
 
 export default function App() {
-  const [context, setContext] = useState<DashboardContext | null>(null);
-  const [siteUrl, setSiteUrl] = useState<string | null>(null);
-  const [visits, setVisits] = useState<VisitPoint[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
   const params = new URLSearchParams(window.location.search);
-  const token = params.get("token");
+  const token = params.get("token") || "YOUR_DEFAULT_TOKEN";
 
-  // -----------------------------
-  // Load dashboard context
-  // -----------------------------
-  useEffect(() => {
-    if (!token) {
-      setError("No dashboard token in URL");
-      return;
-    }
+  const [activeSection, setActiveSection] = useState<Section>("overview");
+  const [timeRange, setTimeRange] = useState<TimeRange>("7days");
 
-    fetch(`http://localhost:8000/dashboards/context?token=${token}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("context request failed");
-        return r.json();
-      })
-      .then((ctx: DashboardContext) => {
-        setContext(ctx);
-
-        if (ctx.role === "user") {
-          setSiteUrl(ctx.default_site);
-        }
-
-        if (ctx.role === "admin") {
-          // временно — первый сайт вручную
-          setSiteUrl("example-site-1.tilda.ws");
-        }
-      })
-      .catch((e) => setError(e.message));
-  }, [token]);
-
-  // -----------------------------
-  // Load visits metrics
-  // -----------------------------
-  useEffect(() => {
-    if (!token || !siteUrl) return;
-
-    fetch(
-      `http://localhost:8000/dashboards/metrics/visits?site_url=${siteUrl}&days=14&token=${token}`
-    )
-      .then((r) => {
-        if (!r.ok) throw new Error("metrics request failed");
-        return r.json();
-      })
-      .then(setVisits)
-      .catch((e) => setError(e.message));
-  }, [siteUrl, token]);
-
-  // -----------------------------
-  // Render
-  // -----------------------------
-  if (error) return <pre>{error}</pre>;
-  if (!context) return <pre>Loading context…</pre>;
-  if (!siteUrl) return <pre>Selecting site…</pre>;
-  if (!visits) return <pre>Loading visits…</pre>;
+  const scrollTo = (id: Section) => {
+    setActiveSection(id);
+    document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Dashboard</h2>
-
-      <div style={{ marginBottom: 12 }}>
-        <strong>Role:</strong> {context.role}
-      </div>
-
-      <div style={{ marginBottom: 20 }}>
-        <strong>Site:</strong>{" "}
-        {context.role === "user" ? (
-          siteUrl
-        ) : (
-          <select
-            value={siteUrl}
-            onChange={(e) => {
-              setVisits(null);
-              setSiteUrl(e.target.value);
-            }}
+    <>
+      <header className="topbar">
+        <nav className="menu">
+          <button
+            className={activeSection === "overview" ? "active" : ""}
+            onClick={() => scrollTo("overview")}
           >
-            <option value="example-site-1.tilda.ws">
-              example-site-1.tilda.ws
-            </option>
-            <option value="example-site-2.tilda.ws">
-              example-site-2.tilda.ws
-            </option>
-          </select>
-        )}
-      </div>
+            Основные метрики
+          </button>
+          <button
+            className={activeSection === "scroll" ? "active" : ""}
+            onClick={() => scrollTo("scroll")}
+          >
+            Глубина просмотра
+          </button>
+          <button
+            className={activeSection === "clicks" ? "active" : ""}
+            onClick={() => scrollTo("clicks")}
+          >
+            Взаимодействие
+          </button>
+          <button
+            className={activeSection === "audience" ? "active" : ""}
+            onClick={() => scrollTo("audience")}
+          >
+            Аудитория
+          </button>
+        </nav>
 
-      <h3>Visits</h3>
-      <pre>{JSON.stringify(visits, null, 2)}</pre>
-    </div>
+        <div className="time-range">
+          <button
+            className={timeRange === "7days" ? "active" : ""}
+            onClick={() => setTimeRange("7days")}
+          >
+            7 дней
+          </button>
+          <button
+            className={timeRange === "30days" ? "active" : ""}
+            onClick={() => setTimeRange("30days")}
+          >
+            30 дней
+          </button>
+        </div>
+      </header>
+
+      <main className="page">
+        <h1 className="site-title">example-site-1.tilda.ws</h1>
+
+        <section id="overview" className="section">
+          <h2>Основные метрики</h2>
+          <div className="chart-block">
+            <div className="chart-header">Визиты по времени</div>
+            <VisitsOverTime token={token} range={timeRange} />
+          </div>
+        </section>
+
+        <section id="scroll" className="section">
+          <h2>Глубина просмотра</h2>
+          <div className="placeholder">Распределение глубины, медиана, p75</div>
+        </section>
+
+        <section id="clicks" className="section">
+          <h2>Взаимодействие с элементами</h2>
+          <div className="placeholder">Клики, время до первого клика</div>
+        </section>
+
+        <section id="audience" className="section">
+          <h2>Аудитория и устройства</h2>
+          <div className="placeholder">Устройства, ОС, браузеры, гео</div>
+        </section>
+      </main>
+    </>
   );
 }

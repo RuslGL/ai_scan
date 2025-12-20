@@ -1,46 +1,88 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, Query, HTTPException
 import asyncpg
 
-from app.db import get_pool
 from app.endpoints.dashboards.auth import get_dashboard_token
+from app.db import get_connection
 
-router = APIRouter(prefix="/dashboards", tags=["dashboards"])
+router = APIRouter(prefix="/dashboards/metrics", tags=["dashboards-metrics"])
 
 
-@router.get("/metrics/visits")
+@router.get("/visits")
 async def visits_over_time(
-    site_url: str = Query(...),
-    days: int = Query(14, ge=1, le=90),
     dashboard_token: asyncpg.Record = Depends(get_dashboard_token),
+    conn: asyncpg.Connection = Depends(get_connection),
+
+    site_url: str | None = Query(None),
+    bucket: str = Query("hour", regex="^(hour|day)$"),
+
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
 ):
     role = dashboard_token["role"]
-    token_site = dashboard_token["site_url"]
+    user_id = dashboard_token["user_id"]
 
-    # user-токен может быть ограничен конкретным сайтом
-    if role != "admin" and token_site is not None and token_site != site_url:
-        raise HTTPException(status_code=403, detail="Access denied for this site")
+    now = datetime.utcnow()
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                date_trunc('day', visit_start) AS date,
-                count(*) AS visits
-            FROM session_summary
-            WHERE site_url = $1
-              AND visit_start >= now() - make_interval(days => $2)
-            GROUP BY date
-            ORDER BY date
-            """,
-            site_url,
-            days,
+    # ------------------------
+    # Defaults
+    # ------------------------
+    if bucket == "hour":
+        default_from = now - timedelta(days=3)
+        max_range = timedelta(days=7)
+        trunc = "hour"
+    else:
+        default_from = now - timedelta(days=14)
+        max_range = timedelta(days=90)
+        trunc = "day"
+
+    if date_to is None:
+        date_to = now
+    if date_from is None:
+        date_from = default_from
+
+    if date_to - date_from > max_range:
+        raise HTTPException(
+            status_code=400,
+            detail="Date range too large for selected bucket",
         )
+
+    # ------------------------
+    # Access control
+    # ------------------------
+    site_filter_sql = ""
+    params = [date_from, date_to]
+
+    if role != "admin":
+        site_filter_sql += " AND owner_user_id = $3"
+        params.append(user_id)
+
+    if site_url:
+        site_filter_sql += f" AND site_url = ${len(params) + 1}"
+        params.append(site_url)
+
+    # ------------------------
+    # Query
+    # ------------------------
+    rows = await conn.fetch(
+        f"""
+        SELECT
+            date_trunc('{trunc}', visit_start) AS bucket,
+            COUNT(*)::int AS value
+        FROM dashboard_session_summary
+        WHERE visit_start >= $1
+          AND visit_start <= $2
+          {site_filter_sql}
+        GROUP BY 1
+        ORDER BY 1
+        """,
+        *params,
+    )
 
     return [
         {
-            "date": r["date"].date().isoformat(),
-            "value": r["visits"],
+            "date": row["bucket"].isoformat(),
+            "value": row["value"],
         }
-        for r in rows
+        for row in rows
     ]

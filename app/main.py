@@ -1,44 +1,29 @@
-"""
-Главная точка входа FastAPI-приложения.
-"""
-
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-
-from app.endpoints.register import router as register_router
-from app.endpoints.track import router as track_router
-from app.endpoints.dashboards.context import router as dashboards_router
-from app.endpoints.dashboards.metrics import router as dashboards_metrics_router  # ← ДОБАВЛЕНО
 
 from app.db import refresh_active_sites
 
+from app.endpoints.register import router as register_router
+from app.endpoints.track import router as track_router
 
-# ------------------------------------------------------
-# Lifespan — выполняется один раз при запуске приложения
-# ------------------------------------------------------
+from app.endpoints.dashboards.context import router as dashboards_context_router
+from app.endpoints.dashboards.metrics import router as dashboards_metrics_router
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Загружаем активные сайты (кэш)
     await refresh_active_sites()
     yield
-    # На shutdown нет действий
 
 
-# ------------------------------------------------------
-# Инициализация приложения
-# ------------------------------------------------------
-app: FastAPI = FastAPI(
+app = FastAPI(
     title="AI Scan API",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-
-# ------------------------------------------------------
-# CORS (пока полностью открыт)
-# ------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,22 +32,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ------------------------------------------------------
-# Безопасная заглушка GET /track
-# ------------------------------------------------------
 @app.get("/track")
 async def track_get_stub():
     return {
         "status": "ok",
-        "message": "Tracking endpoint expects POST requests only."
+        "message": "Tracking endpoint expects POST requests only.",
     }
 
-
-# ------------------------------------------------------
-# Подключение роутов
-# ------------------------------------------------------
 app.include_router(register_router)
 app.include_router(track_router)
-app.include_router(dashboards_router)
+
+# dashboards
+app.include_router(dashboards_context_router)
 app.include_router(dashboards_metrics_router)
