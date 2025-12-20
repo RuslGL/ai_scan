@@ -16,6 +16,9 @@ async def visits_over_time(
     site_url: str | None = Query(None),
     bucket: str = Query("hour", regex="^(hour|day)$"),
 
+    # NEW
+    days: int | None = Query(None),
+
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
 ):
@@ -35,6 +38,17 @@ async def visits_over_time(
         default_from = now - timedelta(days=14)
         max_range = timedelta(days=90)
         trunc = "day"
+
+    # ------------------------
+    # Apply days (if provided)
+    # ------------------------
+    if days is not None:
+        if days <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="days must be a positive integer",
+            )
+        date_from = now - timedelta(days=days)
 
     if date_to is None:
         date_to = now
