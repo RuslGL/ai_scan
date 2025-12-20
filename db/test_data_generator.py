@@ -104,13 +104,19 @@ async def seed(base_sessions: int) -> None:
 
             print(f"→ {site_url}: {sessions_count} sessions")
 
+            now = datetime.utcnow()
+            start_date = now - timedelta(days=35)
+
             for _ in range(sessions_count):
                 uid = uuid.uuid4().hex
                 session_id = uuid.uuid4().hex
 
-                visit_start = datetime.utcnow() - timedelta(
-                    minutes=random.randint(0, 60 * 24 * 7)
+                random_seconds = random.randint(
+                    0,
+                    int((now - start_date).total_seconds())
                 )
+
+                visit_start = start_date + timedelta(seconds=random_seconds)
 
                 duration = random.randint(10, 600)
                 visit_end = visit_start + timedelta(seconds=duration)
