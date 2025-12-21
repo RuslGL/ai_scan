@@ -1,16 +1,18 @@
 import { useState } from "react";
-import VisitsOverTime from "./components/VisitsOverTime";
+import DailyVisits from "./components/DailyVisits";
+import HourlyVisits from "./components/HourlyVisits";
+import VisitsKPI from "./components/VisitsKPI";
 import "./App.css";
 
 type Section = "overview" | "scroll" | "clicks" | "audience";
-type TimeRange = "7days" | "30days";
+type TimeRange = 7 | 30;
 
 export default function App() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("token") || "YOUR_DEFAULT_TOKEN";
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
-  const [timeRange, setTimeRange] = useState<TimeRange>("7days");
+  const [timeRange, setTimeRange] = useState<TimeRange>(7);
 
   const scrollTo = (id: Section) => {
     setActiveSection(id);
@@ -52,14 +54,14 @@ export default function App() {
 
         <div className="time-range">
           <button
-            className={timeRange === "7days" ? "active" : ""}
-            onClick={() => setTimeRange("7days")}
+            className={timeRange === 7 ? "active" : ""}
+            onClick={() => setTimeRange(7)}
           >
             7 дней
           </button>
           <button
-            className={timeRange === "30days" ? "active" : ""}
-            onClick={() => setTimeRange("30days")}
+            className={timeRange === 30 ? "active" : ""}
+            onClick={() => setTimeRange(30)}
           >
             30 дней
           </button>
@@ -71,9 +73,29 @@ export default function App() {
 
         <section id="overview" className="section">
           <h2>Основные метрики</h2>
-          <div className="chart-block">
-            <div className="chart-header">Визиты по времени</div>
-            <VisitsOverTime token={token} range={timeRange} />
+
+          {/* KPI-БЛОК */}
+          <VisitsKPI token={token} days={timeRange} />
+
+          {/* ГРАФИКИ РЯДОМ */}
+          <div
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "stretch",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div className="chart-header">Визиты в день</div>
+              <DailyVisits token={token} days={timeRange} />
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div className="chart-header">
+                Почасовые визиты (3 дня)
+              </div>
+              <HourlyVisits token={token} />
+            </div>
           </div>
         </section>
 
