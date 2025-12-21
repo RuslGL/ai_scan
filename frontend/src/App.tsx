@@ -2,6 +2,8 @@ import { useState } from "react";
 import DailyVisits from "./components/DailyVisits";
 import HourlyVisits from "./components/HourlyVisits";
 import VisitsKPI from "./components/VisitsKPI";
+import ClicksKPI from "./components/ClicksKPI";
+import ScrollDepthDistribution from "./components/ScrollDepthDistribution";
 import "./App.css";
 
 type Section = "overview" | "scroll" | "clicks" | "audience";
@@ -71,26 +73,21 @@ export default function App() {
       <main className="page">
         <h1 className="site-title">example-site-1.tilda.ws</h1>
 
+        {/* =====================
+            OVERVIEW
+        ===================== */}
         <section id="overview" className="section">
           <h2>Основные метрики</h2>
 
-          {/* KPI-БЛОК */}
           <VisitsKPI token={token} days={timeRange} />
 
-          {/* ГРАФИКИ РЯДОМ */}
-          <div
-            style={{
-              display: "flex",
-              gap: "24px",
-              alignItems: "stretch",
-            }}
-          >
-            <div style={{ flex: 1 }}>
+          <div className="charts-row">
+            <div className="chart-col">
               <div className="chart-header">Визиты в день</div>
               <DailyVisits token={token} days={timeRange} />
             </div>
 
-            <div style={{ flex: 1 }}>
+            <div className="chart-col">
               <div className="chart-header">
                 Почасовые визиты (3 дня)
               </div>
@@ -99,19 +96,40 @@ export default function App() {
           </div>
         </section>
 
+        {/* =====================
+            SCROLL DEPTH
+        ===================== */}
         <section id="scroll" className="section">
           <h2>Глубина просмотра</h2>
-          <div className="placeholder">Распределение глубины, медиана, p75</div>
+
+          <ScrollDepthDistribution
+            token={token}
+            days={timeRange}
+          />
         </section>
 
+        {/* =====================
+            CLICKS
+        ===================== */}
         <section id="clicks" className="section">
           <h2>Взаимодействие с элементами</h2>
-          <div className="placeholder">Клики, время до первого клика</div>
+
+          {/* KPI по кликам */}
+          <ClicksKPI token={token} days={timeRange} />
+
+          <div className="placeholder">
+            График кликов и топ элементов — далее
+          </div>
         </section>
 
+        {/* =====================
+            AUDIENCE
+        ===================== */}
         <section id="audience" className="section">
           <h2>Аудитория и устройства</h2>
-          <div className="placeholder">Устройства, ОС, браузеры, гео</div>
+          <div className="placeholder">
+            Устройства, ОС, браузеры, гео
+          </div>
         </section>
       </main>
     </>

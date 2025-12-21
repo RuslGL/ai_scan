@@ -1,10 +1,7 @@
-/* App.css — ПОЛНАЯ РЕДАКЦИЯ (фикс: всё центрируется, не прижато влево) */
-
 * {
   box-sizing: border-box;
 }
 
-/* 🔑 ВАЖНО: убираем ограничения Vite-шаблона */
 html,
 body,
 #root {
@@ -14,19 +11,15 @@ body,
   padding: 0;
 }
 
-/* если где-то остался шаблонный text-align:center — прибиваем */
 #root {
   text-align: left;
 }
 
 body {
-  background: radial-gradient(
-    circle at top,
-    #1f2937 0%,
-    #020617 70%
-  );
+  background: radial-gradient(circle at top, #1f2937 0%, #020617 70%);
   font-family: Inter, system-ui, sans-serif;
   color: #e5e7eb;
+  overflow-x: hidden;
 }
 
 /* =====================
@@ -37,63 +30,57 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-
   width: 100%;
   background: rgba(2, 6, 23, 0.95);
-
-  /* внешний паддинг сверху/сбоку */
-  padding: 16px 24px;
+  padding: 16px;
 }
 
 /* =====================
-   MENU (sections)
+   MENU
 ===================== */
 
 .menu {
-  width: 100%;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .menu button {
-  flex: 1;
-  padding: 14px 16px; /* ⬅ внутренние отступы, чтобы текст не лип */
+  flex: 1 1 auto;
+  padding: 12px 14px;
   background: #020617;
   border: 1px solid #1f2937;
   border-radius: 10px;
   color: #9ca3af;
   cursor: pointer;
+  font-size: 14px;
   white-space: nowrap;
 }
 
 .menu button.active {
-  background: linear-gradient(
-    90deg,
-    #c026d3,
-    #4f46e5,
-    #06b6d4
-  );
+  background: linear-gradient(90deg, #c026d3, #4f46e5, #06b6d4);
   color: #fff;
 }
 
 /* =====================
-   TIME RANGE (7 / 30)
+   TIME RANGE
 ===================== */
 
 .time-range {
   display: flex;
-  gap: 12px;
-  width: 100%;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .time-range button {
-  padding: 10px 16px;
+  padding: 8px 14px;
   background: #020617;
   border: 1px solid #374151;
   border-radius: 8px;
   color: #9ca3af;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .time-range button.active {
@@ -102,19 +89,14 @@ body {
   color: #fff;
 }
 
-.time-range button:focus {
-  outline: none;
-}
-
 /* =====================
-   PAGE LAYOUT
+   PAGE
 ===================== */
 
-/* 🔑 Центрируем всю страницу и растягиваем до ширины окна */
 .page {
   width: min(1600px, 100%);
-  margin: 0 auto;              /* центр */
-  padding: 32px 32px 96px;
+  margin: 0 auto;
+  padding: 24px 16px 80px;
 }
 
 /* =====================
@@ -122,9 +104,10 @@ body {
 ===================== */
 
 .site-title {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
-  margin: 24px 0 48px;
+  margin: 20px 0 32px;
+  word-break: break-word;
 }
 
 /* =====================
@@ -132,9 +115,8 @@ body {
 ===================== */
 
 .section {
-  width: 100%;
-  margin-bottom: 64px;
-  padding: 32px;
+  margin-bottom: 48px;
+  padding: 20px;
   background: rgba(2, 6, 23, 0.6);
   border: 1px solid #1f2937;
   border-radius: 20px;
@@ -143,27 +125,40 @@ body {
 
 .section h2 {
   margin: 0 0 16px;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
 }
 
 /* =====================
-   CHART BLOCK
+   KPI
 ===================== */
 
-.chart-block {
-  width: 100%;
+.kpi-card {
+  overflow-x: auto;
+}
+
+/* =====================
+   CHARTS
+===================== */
+
+.charts-row {
+  display: flex;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.chart-col {
+  flex: 1;
 }
 
 .chart-header {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   margin-bottom: 12px;
-  color: #e5e7eb;
 }
 
 /* =====================
-   RECHARTS FIXES
+   TOOLTIP
 ===================== */
 
 .recharts-default-tooltip {
@@ -171,24 +166,40 @@ body {
   border: 1px solid #1f2937 !important;
   border-radius: 10px !important;
   padding: 10px 12px !important;
-  color: #e5e7eb !important;
-}
-
-.recharts-tooltip-label {
-  color: #9ca3af !important;
-  margin-bottom: 4px;
-}
-
-.recharts-tooltip-item {
-  color: #e5e7eb !important;
 }
 
 /* =====================
-   ERRORS
+   RECHARTS FIXES
 ===================== */
 
-.error {
-  color: #f87171;
-  font-weight: 500;
-  margin-top: 16px;
+/* убираем подсветку активного столбца */
+.recharts-active-bar {
+  fill: transparent !important;
+}
+
+/* убираем белую вертикальную тень (tooltip cursor) */
+.recharts-tooltip-cursor {
+  fill: transparent !important;
+}
+
+/* =====================
+   MOBILE
+===================== */
+
+@media (max-width: 768px) {
+  .charts-row {
+    flex-direction: column;
+  }
+
+  .site-title {
+    font-size: 22px;
+  }
+
+  .section {
+    padding: 16px;
+  }
+
+  .kpi-card > div {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
