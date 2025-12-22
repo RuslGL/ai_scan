@@ -6,10 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import refresh_active_sites
 
+# =====================
+# BASE
+# =====================
 from app.endpoints.register import router as register_router
 from app.endpoints.track import router as track_router
 
-# dashboards
+# =====================
+# DASHBOARDS
+# =====================
 from app.endpoints.dashboards.context import (
     router as dashboards_context_router,
 )
@@ -27,6 +32,15 @@ from app.endpoints.dashboards.scroll_depth_distribution import (
 )
 from app.endpoints.dashboards.clicks_kpi import (
     router as clicks_kpi_router,
+)
+from app.endpoints.dashboards.audience_kpi import (
+    router as audience_kpi_router,
+)
+from app.endpoints.dashboards.devices_distribution import (
+    router as devices_distribution_router,
+)
+from app.endpoints.dashboards.os_distribution import (
+    router as os_distribution_router,
 )
 
 
@@ -58,14 +72,21 @@ async def track_get_stub():
     }
 
 
-# base
+# =====================
+# BASE ROUTERS
+# =====================
 app.include_router(register_router)
 app.include_router(track_router)
 
-# dashboards
+# =====================
+# DASHBOARD ROUTERS
+# =====================
 app.include_router(dashboards_context_router)
 app.include_router(daily_visits_router)
 app.include_router(hourly_visits_router)
 app.include_router(kpi_visits_router)
 app.include_router(scroll_depth_distribution_router)
 app.include_router(clicks_kpi_router)
+app.include_router(audience_kpi_router)
+app.include_router(devices_distribution_router)
+app.include_router(os_distribution_router)

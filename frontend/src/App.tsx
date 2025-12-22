@@ -1,9 +1,16 @@
+// src/App.tsx
+
 import { useState } from "react";
+
 import DailyVisits from "./components/DailyVisits";
 import HourlyVisits from "./components/HourlyVisits";
 import VisitsKPI from "./components/VisitsKPI";
 import ClicksKPI from "./components/ClicksKPI";
+import AudienceKPI from "./components/AudienceKPI";
 import ScrollDepthDistribution from "./components/ScrollDepthDistribution";
+import DevicesDistribution from "./components/DevicesDistribution";
+import OSDistribution from "./components/OSDistribution";
+
 import "./App.css";
 
 type Section = "overview" | "scroll" | "clicks" | "audience";
@@ -34,18 +41,21 @@ export default function App() {
           >
             Основные метрики
           </button>
+
           <button
             className={activeSection === "scroll" ? "active" : ""}
             onClick={() => scrollTo("scroll")}
           >
             Глубина просмотра
           </button>
+
           <button
             className={activeSection === "clicks" ? "active" : ""}
             onClick={() => scrollTo("clicks")}
           >
             Взаимодействие
           </button>
+
           <button
             className={activeSection === "audience" ? "active" : ""}
             onClick={() => scrollTo("audience")}
@@ -61,6 +71,7 @@ export default function App() {
           >
             7 дней
           </button>
+
           <button
             className={timeRange === 30 ? "active" : ""}
             onClick={() => setTimeRange(30)}
@@ -88,9 +99,7 @@ export default function App() {
             </div>
 
             <div className="chart-col">
-              <div className="chart-header">
-                Почасовые визиты (3 дня)
-              </div>
+              <div className="chart-header">Почасовые визиты (3 дня)</div>
               <HourlyVisits token={token} />
             </div>
           </div>
@@ -102,10 +111,7 @@ export default function App() {
         <section id="scroll" className="section">
           <h2>Глубина просмотра</h2>
 
-          <ScrollDepthDistribution
-            token={token}
-            days={timeRange}
-          />
+          <ScrollDepthDistribution token={token} days={timeRange} />
         </section>
 
         {/* =====================
@@ -114,12 +120,9 @@ export default function App() {
         <section id="clicks" className="section">
           <h2>Взаимодействие с элементами</h2>
 
-          {/* KPI по кликам */}
           <ClicksKPI token={token} days={timeRange} />
 
-          <div className="placeholder">
-            График кликов и топ элементов — далее
-          </div>
+          <div className="placeholder">График кликов и топ элементов — далее</div>
         </section>
 
         {/* =====================
@@ -127,8 +130,17 @@ export default function App() {
         ===================== */}
         <section id="audience" className="section">
           <h2>Аудитория и устройства</h2>
-          <div className="placeholder">
-            Устройства, ОС, браузеры, гео
+
+          <AudienceKPI token={token} days={timeRange} />
+
+          <div className="charts-row">
+            <div className="chart-col">
+              <DevicesDistribution token={token} days={timeRange} />
+            </div>
+
+            <div className="chart-col">
+              <OSDistribution token={token} days={timeRange} />
+            </div>
           </div>
         </section>
       </main>
