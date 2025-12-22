@@ -9,13 +9,22 @@ import {
 import { useEffect, useState } from "react";
 
 type Point = {
-  date: string;
+  date: string; // ISO
   value: number;
 };
 
 type Props = {
   token: string;
 };
+
+function formatDateTime(iso: string) {
+  // 2025-12-20T09:00:00 -> 20.12 09:00
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
+}
+
+function formatHour(iso: string) {
+  return iso.slice(11, 16);
+}
 
 function CustomTooltip({
   active,
@@ -26,7 +35,7 @@ function CustomTooltip({
   payload?: any[];
   label?: string;
 }) {
-  if (!active || !payload || !payload.length) return null;
+  if (!active || !payload || !payload.length || !label) return null;
 
   return (
     <div
@@ -40,7 +49,7 @@ function CustomTooltip({
       }}
     >
       <div style={{ color: "#9ca3af", marginBottom: 4 }}>
-        {label?.slice(11, 16)}
+        {formatDateTime(label)}
       </div>
       <div style={{ fontWeight: 600 }}>
         {payload[0].value} визитов
@@ -74,19 +83,24 @@ export default function HourlyVisits({ token }: Props) {
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={data}>
-        <XAxis
-          dataKey="date"
-          tickFormatter={(v) => v.slice(11, 16)}
-        />
+        <XAxis dataKey="date" tickFormatter={formatHour} />
         <YAxis allowDecimals={false} />
         <Tooltip content={<CustomTooltip />} />
+
         <Line
           type="monotone"
           dataKey="value"
-          stroke="#22d3ee"
+          stroke="url(#gradient)"
           strokeWidth={2}
           dot={false}
         />
+
+        <defs>
+          <linearGradient id="gradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#d946ef" />
+            <stop offset="100%" stopColor="#22d3ee" />
+          </linearGradient>
+        </defs>
       </LineChart>
     </ResponsiveContainer>
   );

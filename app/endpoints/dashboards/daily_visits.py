@@ -5,7 +5,10 @@ import asyncpg
 from app.endpoints.dashboards.auth import get_dashboard_token
 from app.db import get_connection
 
-router = APIRouter(prefix="/dashboards/metrics", tags=["dashboards-metrics"])
+router = APIRouter(
+    prefix="/dashboards/metrics",
+    tags=["dashboards-metrics"],
+)
 
 
 @router.get("/daily-visits")
@@ -54,10 +57,25 @@ async def daily_visits(
         *params,
     )
 
-    return [
-        {
-            "date": row["day"].isoformat(),
-            "value": row["value"],
-        }
+    # -------------------------------------------------
+    # Fill missing days with zeros
+    # -------------------------------------------------
+    rows_map = {
+        row["day"].date(): row["value"]
         for row in rows
-    ]
+    }
+
+    data = []
+    current = date_from.date()
+    end = now.date()
+
+    while current <= end:
+        data.append(
+            {
+                "date": current.isoformat(),
+                "value": rows_map.get(current, 0),
+            }
+        )
+        current += timedelta(days=1)
+
+    return data

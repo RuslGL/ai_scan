@@ -4,8 +4,13 @@ import DailyVisits from "./components/DailyVisits";
 import DailyTargetActions from "./components/DailyTargetActions";
 import HourlyVisits from "./components/HourlyVisits";
 import HourlyTargetActions from "./components/HourlyTargetActions";
+
 import VisitsKPI from "./components/VisitsKPI";
 import ClicksKPI from "./components/ClicksKPI";
+
+import ClicksDistributionTotal from "./components/ClicksDistributionTotal";
+import ClicksDistributionAvg from "./components/ClicksDistributionAvg";
+
 import AudienceKPI from "./components/AudienceKPI";
 import ScrollDepthDistribution from "./components/ScrollDepthDistribution";
 import DevicesDistribution from "./components/DevicesDistribution";
@@ -92,7 +97,6 @@ export default function App() {
 
           <VisitsKPI token={token} days={timeRange} />
 
-          {/* DAILY */}
           <div className="charts-row">
             <div className="chart-col">
               <div className="chart-header">Визиты в день</div>
@@ -105,7 +109,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* HOURLY */}
           <div className="charts-row">
             <div className="chart-col">
               <div className="chart-header">
@@ -124,7 +127,7 @@ export default function App() {
         </section>
 
         {/* =====================
-            SCROLL DEPTH
+            SCROLL
         ===================== */}
         <section id="scroll" className="section">
           <h2>Глубина просмотра</h2>
@@ -139,8 +142,20 @@ export default function App() {
 
           <ClicksKPI token={token} days={timeRange} />
 
-          <div className="placeholder">
-            График кликов и топ элементов — далее
+          <div className="charts-row">
+            <div className="chart-col">
+              <ClicksDistributionTotal
+                token={token}
+                days={timeRange}
+              />
+            </div>
+
+            <div className="chart-col">
+              <ClicksDistributionAvg
+                token={token}
+                days={timeRange}
+              />
+            </div>
           </div>
         </section>
 

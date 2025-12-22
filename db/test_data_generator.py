@@ -71,6 +71,28 @@ def random_clicks() -> list[dict]:
     return clicks
 
 
+def random_device():
+    """
+    Возвращает (device_type, os, browser)
+    """
+    device_type = random.choice(["mobile", "desktop"])
+
+    if device_type == "mobile":
+        os_choice = random.choice(["Android", "iOS"])
+
+        if os_choice == "Android":
+            return "mobile", "Android", "Chrome"
+
+        # iOS
+        return "mobile", "iOS", random.choice(["Safari", "Chrome"])
+
+    # desktop
+    os_choice = random.choice(["Mac OS", "Windows", "Linux"])
+    browser_choice = random.choice(["Chrome", "Safari", "Firefox"])
+
+    return "desktop", os_choice, browser_choice
+
+
 # ---------------------------------------------------------------------
 # MAIN SEED LOGIC
 # ---------------------------------------------------------------------
@@ -94,6 +116,9 @@ async def seed(base_sessions: int) -> None:
 
         print(f"Найдено сайтов: {len(sites)}")
 
+        now = datetime.utcnow()
+        start_date = now - timedelta(days=7)  # 🔴 ТОЛЬКО 7 ДНЕЙ
+
         for site in sites:
             site_url = site["site_url"]
 
@@ -103,9 +128,6 @@ async def seed(base_sessions: int) -> None:
             )
 
             print(f"→ {site_url}: {sessions_count} sessions")
-
-            now = datetime.utcnow()
-            start_date = now - timedelta(days=35)
 
             for _ in range(sessions_count):
                 uid = uuid.uuid4().hex
@@ -123,6 +145,8 @@ async def seed(base_sessions: int) -> None:
 
                 scroll_stops = random_scroll_stops()
                 click_buttons = random_clicks()
+
+                device_type, os_name, browser = random_device()
 
                 await conn.execute(
                     """
@@ -168,9 +192,9 @@ async def seed(base_sessions: int) -> None:
                     duration,
                     "TestCountry",
                     "TestCity",
-                    random.choice(["mobile", "desktop"]),
-                    random.choice(["Mac OS", "Windows", "Linux"]),
-                    random.choice(["Chrome", "Safari", "Firefox"]),
+                    device_type,
+                    os_name,
+                    browser,
                     max(s["depth"] for s in scroll_stops),
                     scroll_stops[-1]["depth"],
                     json.dumps(scroll_stops),

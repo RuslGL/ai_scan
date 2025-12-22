@@ -76,7 +76,7 @@ async def daily_target_actions(
     params.append(target_action_text)
 
     # -------------------------------------------------
-    # 3. Один запрос: визиты + цели + конверсия
+    # 3. Один запрос: визиты + цели
     # -------------------------------------------------
     rows = await conn.fetch(
         f"""
@@ -97,7 +97,8 @@ async def daily_target_actions(
         SELECT
             day,
             COUNT(*)::int AS visits,
-            COUNT(DISTINCT session_id) FILTER (WHERE has_target)::int AS target_actions
+            COUNT(DISTINCT session_id)
+                FILTER (WHERE has_target)::int AS target_actions
         FROM base
         GROUP BY day
         ORDER BY day
@@ -106,12 +107,29 @@ async def daily_target_actions(
     )
 
     # -------------------------------------------------
-    # 4. Формируем ответ
+    # 4. Заполняем пропущенные дни нулями
     # -------------------------------------------------
+    rows_map = {
+        row["day"].date(): {
+            "visits": row["visits"],
+            "target_actions": row["target_actions"],
+        }
+        for row in rows
+    }
+
     data = []
-    for row in rows:
-        visits = row["visits"]
-        target_actions = row["target_actions"]
+    current = date_from.date()
+    end = now.date()
+
+    while current <= end:
+        day_data = rows_map.get(current)
+
+        if day_data:
+            visits = day_data["visits"]
+            target_actions = day_data["target_actions"]
+        else:
+            visits = 0
+            target_actions = 0
 
         conversion_rate = (
             round(target_actions / visits, 4) if visits > 0 else 0
@@ -119,12 +137,14 @@ async def daily_target_actions(
 
         data.append(
             {
-                "date": row["day"].isoformat(),
+                "date": current.isoformat(),
                 "visits": visits,
                 "target_actions": target_actions,
                 "conversion_rate": conversion_rate,
             }
         )
+
+        current += timedelta(days=1)
 
     return {
         "has_target_action": True,

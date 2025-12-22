@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 import asyncpg
 
@@ -15,20 +15,22 @@ router = APIRouter(
 async def hourly_target_actions(
     dashboard_token: asyncpg.Record = Depends(get_dashboard_token),
     conn: asyncpg.Connection = Depends(get_connection),
-
     site_url: str | None = Query(None),
 ):
     role = dashboard_token["role"]
     user_id = dashboard_token["user_id"]
 
-    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    date_from = now - timedelta(hours=72)
+    # -------------------------------------------------
+    # 1. Временной диапазон: последние 72 часа (UTC)
+    # -------------------------------------------------
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    date_from = now - timedelta(hours=71)
 
     # -------------------------------------------------
-    # 1. Проверяем, есть ли целевое действие
+    # 2. Проверяем, есть ли целевое действие
     # -------------------------------------------------
     site_filter_sql = ""
-    site_params = []
+    site_params: list[object] = []
 
     if role != "admin":
         site_filter_sql += " AND user_id = $1"
@@ -42,7 +44,7 @@ async def hourly_target_actions(
         f"""
         SELECT target_action_text
         FROM sites
-        WHERE is_active = true
+        WHERE is_active = TRUE
           {site_filter_sql}
         LIMIT 1
         """,
@@ -55,13 +57,13 @@ async def hourly_target_actions(
             "data": [],
         }
 
-    target_action_text = target_row["target_action_text"]
+    target_action_text: str = target_row["target_action_text"]
 
     # -------------------------------------------------
-    # 2. Фильтры для session_summary
+    # 3. Фильтры для session_summary
     # -------------------------------------------------
     session_filter_sql = ""
-    params = [date_from, now]
+    params: list[object] = [date_from, now]
 
     if role != "admin":
         session_filter_sql += " AND dss.owner_user_id = $3"
@@ -75,7 +77,7 @@ async def hourly_target_actions(
     params.append(target_action_text)
 
     # -------------------------------------------------
-    # 3. Запрос (как было)
+    # 4. Агрегация по часам (ТОЛЬКО реальные данные)
     # -------------------------------------------------
     rows = await conn.fetch(
         f"""
@@ -105,38 +107,54 @@ async def hourly_target_actions(
     )
 
     # -------------------------------------------------
-    # 4. ДОБАВЛЕНО: заполняем пропуски за 72 часа нулями
+    # 5. Мапа hour → данные (UTC)
     # -------------------------------------------------
-    by_hour = {
-        row["hour"]: {
-            "visits": row["visits"],
-            "target_actions": row["target_actions"],
+    by_hour: dict[datetime, dict] = {}
+
+    for r in rows:
+        hour: datetime = r["hour"]
+
+        if hour.tzinfo is None:
+            hour = hour.replace(tzinfo=timezone.utc)
+        else:
+            hour = hour.astimezone(timezone.utc)
+
+        hour = hour.replace(minute=0, second=0, microsecond=0)
+
+        visits = r["visits"]
+        target_actions = r["target_actions"]
+
+        by_hour[hour] = {
+            "visits": visits,
+            "target_actions": target_actions,
+            "conversion_rate": round(target_actions / visits, 4)
+            if visits > 0 else 0,
         }
-        for row in rows
-    }
 
-    data = []
-    current = date_from
-    while current <= now:
-        item = by_hour.get(current)
+    # -------------------------------------------------
+    # 6. Заполняем ВСЕ 72 часа (нули там, где нет данных)
+    # -------------------------------------------------
+    data: list[dict] = []
+    cur = date_from
 
-        visits = item["visits"] if item else 0
-        target_actions = item["target_actions"] if item else 0
-
-        conversion_rate = (
-            round(target_actions / visits, 4) if visits > 0 else 0
+    while cur <= now:
+        row = by_hour.get(
+            cur,
+            {
+                "visits": 0,
+                "target_actions": 0,
+                "conversion_rate": 0,
+            },
         )
 
         data.append(
             {
-                "date": current.isoformat(),
-                "visits": visits,
-                "target_actions": target_actions,
-                "conversion_rate": conversion_rate,
+                "date": cur.isoformat(),
+                **row,
             }
         )
 
-        current += timedelta(hours=1)
+        cur += timedelta(hours=1)
 
     return {
         "has_target_action": True,

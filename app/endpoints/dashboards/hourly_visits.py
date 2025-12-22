@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 import asyncpg
 
@@ -12,20 +12,22 @@ router = APIRouter(prefix="/dashboards/metrics", tags=["dashboards-metrics"])
 async def hourly_visits(
     dashboard_token: asyncpg.Record = Depends(get_dashboard_token),
     conn: asyncpg.Connection = Depends(get_connection),
-
     site_url: str | None = Query(None),
 ):
     role = dashboard_token["role"]
     user_id = dashboard_token["user_id"]
 
-    now = datetime.utcnow()
-    date_from = now - timedelta(days=3)
+    # -------------------------------------------------
+    # 1. Временной диапазон: последние 72 часа
+    # -------------------------------------------------
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    date_from = now - timedelta(hours=71)
 
-    # ------------------------
-    # Access control
-    # ------------------------
+    # -------------------------------------------------
+    # 2. Фильтры доступа
+    # -------------------------------------------------
     site_filter_sql = ""
-    params = [date_from, now]
+    params: list[object] = [date_from, now]
 
     if role != "admin":
         site_filter_sql += " AND owner_user_id = $3"
@@ -35,9 +37,9 @@ async def hourly_visits(
         site_filter_sql += f" AND site_url = ${len(params) + 1}"
         params.append(site_url)
 
-    # ------------------------
-    # Query (hourly aggregation, fixed 3 days)
-    # ------------------------
+    # -------------------------------------------------
+    # 3. Агрегация по часам (ТОЛЬКО реальные данные)
+    # -------------------------------------------------
     rows = await conn.fetch(
         f"""
         SELECT
@@ -53,10 +55,36 @@ async def hourly_visits(
         *params,
     )
 
-    return [
-        {
-            "date": row["hour"].isoformat(),
-            "value": row["value"],
-        }
-        for row in rows
-    ]
+    # -------------------------------------------------
+    # 4. Мапа: hour (UTC) → value
+    # -------------------------------------------------
+    by_hour: dict[datetime, int] = {}
+
+    for r in rows:
+        hour: datetime = r["hour"]
+
+        # КРИТИЧНО: нормализация
+        if hour.tzinfo is None:
+            hour = hour.replace(tzinfo=timezone.utc)
+        else:
+            hour = hour.astimezone(timezone.utc)
+
+        hour = hour.replace(minute=0, second=0, microsecond=0)
+        by_hour[hour] = r["value"]
+
+    # -------------------------------------------------
+    # 5. Заполняем ВСЕ 72 часа, добавляя нули
+    # -------------------------------------------------
+    data: list[dict] = []
+    cur = date_from
+
+    while cur <= now:
+        data.append(
+            {
+                "date": cur.isoformat(),
+                "value": by_hour.get(cur, 0),
+            }
+        )
+        cur += timedelta(hours=1)
+
+    return data

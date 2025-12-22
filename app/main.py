@@ -48,6 +48,9 @@ from app.endpoints.dashboards.daily_target_actions import (
 from app.endpoints.dashboards.hourly_target_actions import (
     router as hourly_target_actions_router,
 )
+from app.endpoints.dashboards.clicks_distribution import (
+    router as clicks_distribution_router,
+)
 
 
 @asynccontextmanager
@@ -104,3 +107,4 @@ app.include_router(devices_distribution_router)
 app.include_router(os_distribution_router)
 app.include_router(daily_target_actions_router)
 app.include_router(hourly_target_actions_router)
+app.include_router(clicks_distribution_router)
