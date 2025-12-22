@@ -1,23 +1,53 @@
 FROM python:3.12-slim
 
-# Устанавливаем системные зависимости
+# -------------------------------------------------
+# SYSTEM DEPENDENCIES (Postgres + Playwright)
+# -------------------------------------------------
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    libu2f-udev \
+    libvulkan1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Рабочая директория
 WORKDIR /app
 
-# Устанавливаем зависимости проекта
+# -------------------------------------------------
+# PYTHON DEPS
+# -------------------------------------------------
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем исходный код
+# -------------------------------------------------
+# INSTALL PLAYWRIGHT CHROMIUM
+# -------------------------------------------------
+RUN python -m playwright install chromium
+
+# -------------------------------------------------
+# PROJECT FILES
+# -------------------------------------------------
 COPY . /app
 
-# Открываем порт API (для FastAPI-сервиса)
 EXPOSE 8000
 
-# Дефолтная команда (переопределяется в docker-compose для fastapi/worker)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

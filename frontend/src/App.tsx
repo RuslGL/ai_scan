@@ -1,9 +1,9 @@
-// src/App.tsx
-
 import { useState } from "react";
 
 import DailyVisits from "./components/DailyVisits";
+import DailyTargetActions from "./components/DailyTargetActions";
 import HourlyVisits from "./components/HourlyVisits";
+import HourlyTargetActions from "./components/HourlyTargetActions";
 import VisitsKPI from "./components/VisitsKPI";
 import ClicksKPI from "./components/ClicksKPI";
 import AudienceKPI from "./components/AudienceKPI";
@@ -92,6 +92,7 @@ export default function App() {
 
           <VisitsKPI token={token} days={timeRange} />
 
+          {/* DAILY */}
           <div className="charts-row">
             <div className="chart-col">
               <div className="chart-header">Визиты в день</div>
@@ -99,8 +100,25 @@ export default function App() {
             </div>
 
             <div className="chart-col">
-              <div className="chart-header">Почасовые визиты (3 дня)</div>
+              <div className="chart-header">Целевые действия в день</div>
+              <DailyTargetActions token={token} days={timeRange} />
+            </div>
+          </div>
+
+          {/* HOURLY */}
+          <div className="charts-row">
+            <div className="chart-col">
+              <div className="chart-header">
+                Почасовые визиты (3 дня)
+              </div>
               <HourlyVisits token={token} />
+            </div>
+
+            <div className="chart-col">
+              <div className="chart-header">
+                Почасовые целевые действия (3 дня)
+              </div>
+              <HourlyTargetActions token={token} />
             </div>
           </div>
         </section>
@@ -110,7 +128,6 @@ export default function App() {
         ===================== */}
         <section id="scroll" className="section">
           <h2>Глубина просмотра</h2>
-
           <ScrollDepthDistribution token={token} days={timeRange} />
         </section>
 
@@ -122,7 +139,9 @@ export default function App() {
 
           <ClicksKPI token={token} days={timeRange} />
 
-          <div className="placeholder">График кликов и топ элементов — далее</div>
+          <div className="placeholder">
+            График кликов и топ элементов — далее
+          </div>
         </section>
 
         {/* =====================

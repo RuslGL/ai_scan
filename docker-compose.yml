@@ -61,16 +61,17 @@ services:
       sh -c "python -m summary.worker"
 
   # --------------------------------------------------------------------
-  # APPSMITH (DASHBOARDS UI)
+  # TELEGRAM BOT (PLAYWRIGHT READY)
   # --------------------------------------------------------------------
-#  appsmith:
-#    image: appsmith/appsmith-ce:v1.27
-#    container_name: ai_scan_appsmith
-#    restart: unless-stopped
-#    ports:
-#      - "8080:80"
-#    volumes:
-#      - appsmith_data:/appsmith-stacks
+  tg_bot:
+    build: .
+    container_name: ai_scan_tg_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - internal
+    command: sleep infinity
 
 # --------------------------------------------------------------------
 # NETWORKS
@@ -84,4 +85,3 @@ networks:
 # --------------------------------------------------------------------
 volumes:
   postgres_data:
-#  appsmith_data:

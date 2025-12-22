@@ -42,6 +42,12 @@ from app.endpoints.dashboards.devices_distribution import (
 from app.endpoints.dashboards.os_distribution import (
     router as os_distribution_router,
 )
+from app.endpoints.dashboards.daily_target_actions import (
+    router as daily_target_actions_router,
+)
+from app.endpoints.dashboards.hourly_target_actions import (
+    router as hourly_target_actions_router,
+)
 
 
 @asynccontextmanager
@@ -55,6 +61,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# =====================
+# MIDDLEWARE
+# =====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -64,6 +73,9 @@ app.add_middleware(
 )
 
 
+# =====================
+# STUB
+# =====================
 @app.get("/track")
 async def track_get_stub():
     return {
@@ -90,3 +102,5 @@ app.include_router(clicks_kpi_router)
 app.include_router(audience_kpi_router)
 app.include_router(devices_distribution_router)
 app.include_router(os_distribution_router)
+app.include_router(daily_target_actions_router)
+app.include_router(hourly_target_actions_router)

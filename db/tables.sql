@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS sites (
     site_url TEXT NOT NULL UNIQUE,
     api_key TEXT,
     category TEXT,
+
+    -- TARGET ACTION (BUTTON TEXT)
+    target_action_text TEXT,
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_scan_at TIMESTAMPTZ DEFAULT NOW(),
     is_active BOOLEAN NOT NULL DEFAULT TRUE
