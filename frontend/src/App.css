@@ -177,9 +177,38 @@ body {
   fill: transparent !important;
 }
 
-/* убираем белую вертикальную тень (tooltip cursor) */
+/* убираем вертикальный cursor */
 .recharts-tooltip-cursor {
   fill: transparent !important;
+}
+
+/* =====================
+   REMOVE FOCUS RING (GLOBAL)
+===================== */
+
+/* chart containers */
+.chart-col,
+.chart-col:focus,
+.chart-col:focus-visible,
+.chart-col:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* section containers */
+.section,
+.section:focus,
+.section:focus-visible,
+.section:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* any focused inner elements */
+.chart-col *:focus,
+.chart-col *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* =====================

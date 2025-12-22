@@ -25,6 +25,36 @@ type Props = {
   token: string;
 };
 
+// -------------------------
+// helpers
+// -------------------------
+function formatDateTime(iso: string) {
+  // 2025-12-20T09:00:00 -> 20.12.2025, 09:00
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(
+    0,
+    4
+  )} ${iso.slice(11, 16)}`;
+}
+
+/**
+ * Показываем дату ТОЛЬКО при смене дня
+ */
+let lastRenderedDay: string | null = null;
+function formatDateBoundaryTick(iso: string) {
+  const day = iso.slice(8, 10);
+  const month = iso.slice(5, 7);
+
+  if (lastRenderedDay !== day) {
+    lastRenderedDay = day;
+    return `${day}.${month}`;
+  }
+
+  return "";
+}
+
+// -------------------------
+// tooltip
+// -------------------------
 function CustomTooltip({
   active,
   payload,
@@ -34,7 +64,7 @@ function CustomTooltip({
   payload?: any[];
   label?: string;
 }) {
-  if (!active || !payload || !payload.length) return null;
+  if (!active || !payload || !payload.length || !label) return null;
 
   const p = payload[0].payload as Point;
 
@@ -47,11 +77,21 @@ function CustomTooltip({
         padding: "10px 12px",
         color: "#e5e7eb",
         fontSize: "13px",
+        minWidth: "180px",
       }}
     >
-      <div style={{ color: "#9ca3af", marginBottom: 4 }}>
-        {label?.slice(11, 13)}:00&nbsp;
-        {label?.slice(8, 10)}.{label?.slice(5, 7)}
+      <div
+        style={{
+          fontSize: "12px",
+          fontWeight: 600,
+          marginBottom: "6px",
+        }}
+      >
+        Почасовые целевые действия
+      </div>
+
+      <div style={{ color: "#9ca3af", marginBottom: 6 }}>
+        {formatDateTime(label)}
       </div>
 
       <div>Визиты: <b>{p.visits}</b></div>
@@ -64,6 +104,9 @@ function CustomTooltip({
   );
 }
 
+// -------------------------
+// component
+// -------------------------
 export default function HourlyTargetActions({ token }: Props) {
   const [data, setData] = useState<Point[]>([]);
   const [hasTarget, setHasTarget] = useState(true);
@@ -71,6 +114,7 @@ export default function HourlyTargetActions({ token }: Props) {
 
   useEffect(() => {
     setError(false);
+    lastRenderedDay = null; // сброс между рендерами
 
     fetch(
       `http://localhost:8000/dashboards/metrics/hourly-target-actions?token=${token}`
@@ -103,7 +147,9 @@ export default function HourlyTargetActions({ token }: Props) {
       <LineChart data={data}>
         <XAxis
           dataKey="date"
-          tickFormatter={(v) => v.slice(11, 13)}
+          tickFormatter={formatDateBoundaryTick}
+          interval={0}
+          minTickGap={20}
         />
         <YAxis allowDecimals={false} />
         <Tooltip content={<CustomTooltip />} />

@@ -47,11 +47,11 @@ async def clicks_kpi(
     row = await conn.fetchrow(
         f"""
         SELECT
-            COUNT(DISTINCT session_id)                         AS total_sessions,
+            COUNT(DISTINCT session_id)                                       AS total_sessions,
             COUNT(DISTINCT CASE
                 WHEN total_click_events > 0 THEN session_id
-            END)                                               AS sessions_with_clicks,
-            COALESCE(SUM(total_click_events), 0)::int          AS total_clicks
+            END)                                                             AS sessions_with_clicks,
+            COALESCE(SUM(total_click_events), 0)::int                        AS total_clicks
         FROM dashboard_session_summary
         WHERE visit_start >= $1
           AND visit_start <= $2
@@ -60,23 +60,29 @@ async def clicks_kpi(
         *params,
     )
 
-    total_sessions = row["total_sessions"]
+    total_sessions = row["total_sessions"] or 0
 
-    if not total_sessions:
+    if total_sessions == 0:
         return {
             "has_data": False,
         }
 
-    sessions_with_clicks = row["sessions_with_clicks"]
-    total_clicks = row["total_clicks"]
+    sessions_with_clicks = row["sessions_with_clicks"] or 0
+    total_clicks = row["total_clicks"] or 0
 
     click_sessions_percent = round(
-        sessions_with_clicks / total_sessions * 100, 1
+        sessions_with_clicks / total_sessions * 100,
+        1,
     )
 
     return {
         "has_data": True,
+
+        # базовые величины
+        "total_sessions": total_sessions,
         "total_clicks": total_clicks,
         "sessions_with_clicks": sessions_with_clicks,
+
+        # производная метрика
         "click_sessions_percent": click_sessions_percent,
     }

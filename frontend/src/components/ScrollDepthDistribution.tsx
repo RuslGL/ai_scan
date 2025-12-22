@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 type Bucket = {
   from: number;
   to: number;
-  value: number;
+  value: number; // %
 };
 
 type ApiResponse = {
@@ -50,7 +50,7 @@ function CustomTooltip({
         Глубина {label}%
       </div>
       <div style={{ fontWeight: 600 }}>
-        {payload[0].value} сессий
+        Дошли {payload[0].value}%
       </div>
     </div>
   );
@@ -63,7 +63,6 @@ export default function ScrollDepthDistribution({
   const [data, setData] = useState<
     { label: string; value: number }[]
   >([]);
-  const [hasData, setHasData] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -77,13 +76,6 @@ export default function ScrollDepthDistribution({
         return r.json();
       })
       .then((json: ApiResponse) => {
-        if (!json.has_data) {
-          setHasData(false);
-          setData([]);
-          return;
-        }
-
-        setHasData(true);
         setData(
           json.distribution.map((b) => ({
             label: `${b.from}–${b.to}`,
@@ -98,15 +90,14 @@ export default function ScrollDepthDistribution({
     return <div className="error">Ошибка загрузки графика</div>;
   }
 
-  if (!hasData) {
-    return <div className="placeholder">Нет данных</div>;
-  }
-
   return (
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={data}>
         <XAxis dataKey="label" />
-        <YAxis allowDecimals={false} />
+        <YAxis
+          domain={[0, 100]}
+          tickFormatter={(v) => `${v}%`}
+        />
         <Tooltip content={<CustomTooltip />} />
         <Bar
           dataKey="value"

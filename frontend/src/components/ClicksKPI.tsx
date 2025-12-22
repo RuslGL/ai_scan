@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 
-type KPIResponse = {
-  has_data: boolean;
-  total_clicks: number | null;
-  sessions_with_clicks: number | null;
-  click_sessions_percent: number | null;
-};
+type KPIResponse =
+  | { has_data: false }
+  | {
+      has_data: true;
+      total_sessions: number;
+      total_clicks: number;
+      sessions_with_clicks: number;
+      click_sessions_percent: number;
+    };
 
 type Props = {
   token: string;
@@ -39,6 +42,10 @@ export default function ClicksKPI({ token, days }: Props) {
     return <div className="kpi-card">Загрузка…</div>;
   }
 
+  if (!data.has_data) {
+    return <div className="kpi-card">Нет данных</div>;
+  }
+
   return (
     <div
       className="kpi-card"
@@ -53,10 +60,15 @@ export default function ClicksKPI({ token, days }: Props) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: "16px",
         }}
       >
+        <KPIItem
+          label="Всего сессий"
+          value={data.total_sessions}
+        />
+
         <KPIItem
           label="Всего кликов"
           value={data.total_clicks}
@@ -68,7 +80,7 @@ export default function ClicksKPI({ token, days }: Props) {
         />
 
         <KPIItem
-          label="Процент сессий с кликами"
+          label="% сессий с кликами"
           value={data.click_sessions_percent}
           format={(v) => `${v.toFixed(1)}%`}
         />
@@ -79,12 +91,10 @@ export default function ClicksKPI({ token, days }: Props) {
 
 function KPIItem({
   label,
-  subtitle,
   value,
   format,
 }: {
   label: string;
-  subtitle?: string;
   value: number | null;
   format?: (v: number) => string;
 }) {
@@ -98,22 +108,10 @@ function KPIItem({
           fontSize: "13px",
           fontWeight: 600,
           color: "#e5e7eb",
-          marginBottom: "4px",
+          marginBottom: "2px",
         }}
       >
         {label}
-        {subtitle && (
-          <span
-            style={{
-              fontWeight: 400,
-              color: "#6b7280",
-              marginLeft: "6px",
-              fontSize: "11px",
-            }}
-          >
-            {subtitle}
-          </span>
-        )}
       </div>
 
       <div

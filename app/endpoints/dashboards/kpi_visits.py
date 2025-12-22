@@ -41,7 +41,7 @@ async def visits_kpi(
         params_previous.append(site_url)
 
     # ------------------------
-    # Current period
+    # Current period (daily)
     # ------------------------
     current_rows = await conn.fetch(
         f"""
@@ -68,14 +68,16 @@ async def visits_kpi(
         }
 
     total_current = sum(r["visits"] for r in current_rows)
-    days_count = len(current_rows)
-    avg_per_day = total_current / days_count
     max_per_day = max(r["visits"] for r in current_rows)
 
+    # ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
+    # среднее считаем по ЗАПРОШЕННОМУ периоду, а не по дням с визитами
+    avg_per_day = total_current / days
+
     # ------------------------
-    # Previous period
+    # Previous period (total)
     # ------------------------
-    previous_rows = await conn.fetch(
+    prev_row = await conn.fetchrow(
         f"""
         SELECT
             COUNT(*)::int AS visits
@@ -87,11 +89,11 @@ async def visits_kpi(
         *params_previous,
     )
 
-    if not previous_rows or previous_rows[0]["visits"] is None:
+    if not prev_row or not prev_row["visits"]:
         delta_percent = None
         delta_note = "no_previous_data"
     else:
-        prev_total = previous_rows[0]["visits"]
+        prev_total = prev_row["visits"]
 
         if prev_total <= 0:
             delta_percent = None

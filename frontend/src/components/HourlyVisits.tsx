@@ -17,15 +17,37 @@ type Props = {
   token: string;
 };
 
+// -------------------------
+// helpers
+// -------------------------
 function formatDateTime(iso: string) {
-  // 2025-12-20T09:00:00 -> 20.12 09:00
-  return `${iso.slice(8, 10)}.${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
+  // 2025-12-20T09:00:00 -> 20.12.2025, 09:00
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(
+    0,
+    4
+  )} ${iso.slice(11, 16)}`;
 }
 
-function formatHour(iso: string) {
-  return iso.slice(11, 16);
+/**
+ * Показываем дату ТОЛЬКО на границе дней.
+ * Для всех остальных тиков — пустая строка.
+ */
+let lastRenderedDay: string | null = null;
+function formatDateBoundaryTick(iso: string) {
+  const day = iso.slice(8, 10);
+  const month = iso.slice(5, 7);
+
+  if (lastRenderedDay !== day) {
+    lastRenderedDay = day;
+    return `${day}.${month}`;
+  }
+
+  return "";
 }
 
+// -------------------------
+// tooltip
+// -------------------------
 function CustomTooltip({
   active,
   payload,
@@ -46,11 +68,23 @@ function CustomTooltip({
         padding: "10px 12px",
         color: "#e5e7eb",
         fontSize: "13px",
+        minWidth: "160px",
       }}
     >
-      <div style={{ color: "#9ca3af", marginBottom: 4 }}>
+      <div
+        style={{
+          fontSize: "12px",
+          fontWeight: 600,
+          marginBottom: "6px",
+        }}
+      >
+        Почасовые визиты
+      </div>
+
+      <div style={{ color: "#9ca3af", marginBottom: 6 }}>
         {formatDateTime(label)}
       </div>
+
       <div style={{ fontWeight: 600 }}>
         {payload[0].value} визитов
       </div>
@@ -58,12 +92,16 @@ function CustomTooltip({
   );
 }
 
+// -------------------------
+// component
+// -------------------------
 export default function HourlyVisits({ token }: Props) {
   const [data, setData] = useState<Point[]>([]);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     setError(false);
+    lastRenderedDay = null; // сброс между рендерами
 
     fetch(
       `http://localhost:8000/dashboards/metrics/hourly-visits?token=${token}`
@@ -83,7 +121,12 @@ export default function HourlyVisits({ token }: Props) {
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={data}>
-        <XAxis dataKey="date" tickFormatter={formatHour} />
+        <XAxis
+          dataKey="date"
+          tickFormatter={formatDateBoundaryTick}
+          interval={0}
+          minTickGap={20}
+        />
         <YAxis allowDecimals={false} />
         <Tooltip content={<CustomTooltip />} />
 
