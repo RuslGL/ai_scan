@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS user_plans (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- SITES
+------------------------------------------------------------
+--                         SITES
+------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -41,6 +43,15 @@ CREATE TABLE IF NOT EXISTS sites (
 
     -- TARGET ACTION (BUTTON TEXT)
     target_action_text TEXT,
+
+    /*
+      SITE TIMEZONE
+      Формат: только IANA (пример: 'Europe/Moscow', 'America/Chicago', 'UTC')
+      ❌ не допускаются строки вида '+03:00', 'MSK', 'GMT+3'
+      Все timestamp продолжаем хранить в UTC
+      Таймзона используется только для интерпретации суток и локальной даты
+    */
+    timezone TEXT NOT NULL DEFAULT 'UTC',
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_scan_at TIMESTAMPTZ DEFAULT NOW(),
@@ -165,3 +176,48 @@ CREATE TABLE IF NOT EXISTS dashboard_tokens (
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_dashboard_tokens_site_url
 ON dashboard_tokens(site_url);
+
+------------------------------------------------------------
+--              AGGREGATED SITE METRICS (DAILY)
+------------------------------------------------------------
+/*
+Храним результаты суточной агрегации:
+- daily        — показатели за текущие сутки
+- baseline_7d  — бенчмарк (медиана/агрегаты за предыдущий период)
+- stats        — результаты стат-тестов
+
+Все timestamp остаются в UTC.
+date_local — календарные сутки в таймзоне сайта (YYYY-MM-DD).
+*/
+
+CREATE TABLE IF NOT EXISTS site_daily_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- BINDING
+    site_url TEXT NOT NULL REFERENCES sites(site_url) ON DELETE CASCADE,
+
+    -- LOCAL DAY (NOT TIMESTAMP)
+    date_local DATE NOT NULL,
+
+    -- JSON BLOCKS (как отдаёт агрегатор)
+    daily JSONB NOT NULL,
+    baseline_7d JSONB,
+    stats JSONB,
+
+    -- META
+    period_days INT NOT NULL DEFAULT 7,
+    timezone TEXT NOT NULL,
+    computed_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- AI DELIVERY STATUS
+    reported BOOLEAN NOT NULL DEFAULT FALSE,
+
+    UNIQUE (site_url, date_local)
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_daily_metrics_site_date
+ON site_daily_metrics(site_url, date_local);
+
+CREATE INDEX IF NOT EXISTS idx_site_daily_metrics_reported
+ON site_daily_metrics(reported);
+
